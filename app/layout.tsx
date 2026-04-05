@@ -15,6 +15,15 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "共有家計簿",
   description: "家族・カップルで使える共有家計簿アプリ",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "共有家計簿",
+  },
+  icons: {
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({
