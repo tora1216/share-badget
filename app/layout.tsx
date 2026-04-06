@@ -22,7 +22,8 @@ export const metadata: Metadata = {
     title: "共有家計簿",
   },
   icons: {
-    apple: "/apple-icon.png",
+    icon: "/icon.png",
+    apple: "/icon.png",
   },
 };
 
@@ -38,6 +39,10 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        <link rel="apple-touch-icon" href="/icon.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="共有家計簿" />
         <script
           dangerouslySetInnerHTML={{
             __html: `try{if(localStorage.getItem('share-badget-dark')==='true')document.documentElement.classList.add('dark')}catch(e){}`,
