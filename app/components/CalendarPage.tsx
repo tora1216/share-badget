@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import type { Entry, Category, CalendarEvent, FixedCost } from '../types'
-import { DEFAULT_CATEGORIES } from '../types'
+import { DEFAULT_CATEGORIES, EVENT_COLORS } from '../types'
 import ManagePage from './ManagePage'
 import ReportPage from './ReportPage'
 import MenuPage from './MenuPage'
@@ -24,9 +24,8 @@ export default function CalendarPage() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
   const [darkMode, setDarkMode] = useState(false)
 
-  // 選択中の日付（カレンダー下の明細表示用）
-  const [focusedDate, setFocusedDate] = useState<string | null>(null)
-  const detailRef = useRef<HTMLDivElement>(null)
+  // 日付ごとの明細グループへのスクロール参照
+  const groupRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   // 追加ダイアログ state
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -40,6 +39,8 @@ export default function CalendarPage() {
   // 予定ダイアログ用
   const [eventTitle, setEventTitle] = useState('')
   const [eventNote, setEventNote] = useState('')
+  const [eventEndDate, setEventEndDate] = useState(todayStr)
+  const [eventColor, setEventColor] = useState(EVENT_COLORS[0])
 
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
   const [activeNav, setActiveNav] = useState<NavTab>('calendar')
@@ -59,7 +60,17 @@ export default function CalendarPage() {
     const storedMembers = localStorage.getItem('share-badget-members')
     if (storedMembers) setMembers(JSON.parse(storedMembers))
     const storedEvents = localStorage.getItem('share-badget-events')
-    if (storedEvents) setCalendarEvents(JSON.parse(storedEvents))
+    if (storedEvents) {
+      const parsed = JSON.parse(storedEvents) as Partial<CalendarEvent>[]
+      setCalendarEvents(parsed.map(e => ({
+        id: e.id!,
+        date: e.date!,
+        endDate: e.endDate ?? e.date!,
+        title: e.title!,
+        note: e.note,
+        color: e.color ?? EVENT_COLORS[0],
+      })))
+    }
     const storedFixed = localStorage.getItem('share-badget-fixed-costs')
     if (storedFixed) setFixedCosts(JSON.parse(storedFixed))
     const isDark = localStorage.getItem('share-badget-dark') === 'true'
@@ -73,7 +84,7 @@ export default function CalendarPage() {
     document.documentElement.classList.toggle('dark', next)
   }
 
-  // 1クリック → 明細表示、ダブルクリック → 追加ダイアログ
+  // 1クリック → 明細へスクロール、ダブルクリック → 追加ダイアログ
   const handleDayClick = (dateStr: string) => {
     if (lastClickedDateRef.current === dateStr && clickTimerRef.current) {
       clearTimeout(clickTimerRef.current)
@@ -86,8 +97,7 @@ export default function CalendarPage() {
       clickTimerRef.current = setTimeout(() => {
         clickTimerRef.current = null
         lastClickedDateRef.current = null
-        setFocusedDate(dateStr)
-        setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50)
+        groupRefs.current[dateStr]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 280)
     }
   }
@@ -107,6 +117,8 @@ export default function CalendarPage() {
     setPaidBy('')
     setEventTitle('')
     setEventNote('')
+    setEventEndDate(dateStr)
+    setEventColor(EVENT_COLORS[0])
     setDialogOpen(true)
   }
 
@@ -132,6 +144,8 @@ export default function CalendarPage() {
     setActiveTab('event')
     setEventTitle(ev.title)
     setEventNote(ev.note ?? '')
+    setEventEndDate(ev.endDate)
+    setEventColor(ev.color)
     setAmount('')
     setMemo('')
     setCategoryId('')
@@ -148,15 +162,17 @@ export default function CalendarPage() {
   const saveEntry = () => {
     if (activeTab === 'event') {
       if (!eventTitle.trim()) return
+      const start = selectedDate <= eventEndDate ? selectedDate : eventEndDate
+      const end = selectedDate <= eventEndDate ? eventEndDate : selectedDate
       let updated: CalendarEvent[]
       if (editingEventId) {
         updated = calendarEvents.map(e =>
           e.id === editingEventId
-            ? { ...e, date: selectedDate, title: eventTitle.trim(), note: eventNote.trim() || undefined }
+            ? { ...e, date: start, endDate: end, title: eventTitle.trim(), note: eventNote.trim() || undefined, color: eventColor }
             : e
         )
       } else {
-        updated = [...calendarEvents, { id: Date.now().toString(), date: selectedDate, title: eventTitle.trim(), note: eventNote.trim() || undefined }]
+        updated = [...calendarEvents, { id: Date.now().toString(), date: start, endDate: end, title: eventTitle.trim(), note: eventNote.trim() || undefined, color: eventColor }]
       }
       setCalendarEvents(updated)
       localStorage.setItem('share-badget-events', JSON.stringify(updated))
@@ -194,6 +210,14 @@ export default function CalendarPage() {
     localStorage.setItem('share-badget-entries', JSON.stringify(updated))
   }
 
+  const deleteFromDialog = () => {
+    if (editingEntryId) deleteEntry(editingEntryId)
+    if (editingEventId) deleteEvent(editingEventId)
+    setEditingEntryId(null)
+    setEditingEventId(null)
+    setDialogOpen(false)
+  }
+
   const updateCategories = (updated: Category[]) => {
     setCategories(updated)
     localStorage.setItem('share-badget-categories', JSON.stringify(updated))
@@ -210,13 +234,11 @@ export default function CalendarPage() {
   }
 
   const prevMonth = () => {
-    setFocusedDate(null)
     if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(currentYear - 1) }
     else setCurrentMonth(currentMonth - 1)
   }
 
   const nextMonth = () => {
-    setFocusedDate(null)
     if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1) }
     else setCurrentMonth(currentMonth + 1)
   }
@@ -228,8 +250,45 @@ export default function CalendarPage() {
   const getEntriesForDay = (day: number) =>
     entries.filter(e => e.date === `${monthPrefix}-${String(day).padStart(2, '0')}`)
 
-  const getEventsForDay = (day: number) =>
-    calendarEvents.filter(e => e.date === `${monthPrefix}-${String(day).padStart(2, '0')}`)
+  // 週ごとのセル配列（帯を週単位のグリッドで描画するため）
+  type WeekCell = { day: number | null; dateStr: string | null }
+  const weekCount = Math.ceil((firstDay + daysInMonth) / 7)
+  const weeks: WeekCell[][] = Array.from({ length: weekCount }, (_, w) =>
+    Array.from({ length: 7 }, (_, c) => {
+      const day = w * 7 + c - firstDay + 1
+      return day >= 1 && day <= daysInMonth
+        ? { day, dateStr: `${monthPrefix}-${String(day).padStart(2, '0')}` }
+        : { day: null, dateStr: null }
+    })
+  )
+
+  type EventLane = { event: CalendarEvent; colStart: number; colEnd: number; isStart: boolean; isEnd: boolean }
+
+  // 週内で予定を重ならないレーンに割り当てる（帯表示用）
+  const getWeekLanes = (week: WeekCell[]): EventLane[][] => {
+    const definedIdx = week.map((c, i) => (c.dateStr ? i : -1)).filter(i => i >= 0)
+    if (definedIdx.length === 0) return []
+    const weekMin = week[definedIdx[0]].dateStr!
+    const weekMax = week[definedIdx[definedIdx.length - 1]].dateStr!
+    const overlapping = calendarEvents
+      .filter(e => e.date <= weekMax && e.endDate >= weekMin)
+      .sort((a, b) => a.date.localeCompare(b.date) || b.endDate.localeCompare(a.endDate))
+
+    const segments: EventLane[] = overlapping.map(e => {
+      const startIdx = definedIdx.find(i => week[i].dateStr! >= e.date) ?? definedIdx[0]
+      const endCandidates = definedIdx.filter(i => week[i].dateStr! <= e.endDate)
+      const endIdx = endCandidates.length > 0 ? endCandidates[endCandidates.length - 1] : definedIdx[definedIdx.length - 1]
+      return { event: e, colStart: startIdx, colEnd: endIdx, isStart: e.date >= weekMin, isEnd: e.endDate <= weekMax }
+    })
+
+    const lanes: EventLane[][] = []
+    for (const seg of segments) {
+      const lane = lanes.find(l => l.every(s => seg.colStart > s.colEnd || seg.colEnd < s.colStart))
+      if (lane) lane.push(seg)
+      else lanes.push([seg])
+    }
+    return lanes
+  }
 
   const totalExpense = entries
     .filter(e => e.date.startsWith(monthPrefix) && e.type === 'expense')
@@ -241,30 +300,23 @@ export default function CalendarPage() {
 
   const filteredCategories = categories.filter(c => c.type === activeTab)
 
-  // 明細表示用のデータ
-  const focusedEntries = focusedDate ? entries.filter(e => e.date === focusedDate) : []
-  const focusedEvents = focusedDate ? calendarEvents.filter(e => e.date === focusedDate) : []
-  const focusedExpenseTotal = focusedEntries.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0)
-  const focusedIncomeTotal = focusedEntries.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0)
-  const focusedDayLabel = (() => {
-    if (!focusedDate) return ''
-    const [y, m, d] = focusedDate.split('-').map(Number)
-    const dow = DAYS_OF_WEEK[new Date(y, m - 1, d).getDay()]
-    const dowColor = new Date(y, m - 1, d).getDay() === 0 ? 'text-red-500' : new Date(y, m - 1, d).getDay() === 6 ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'
-    return { month: m, day: d, dow, dowColor }
-  })()
+  // 月内の明細（日付ごとにグルーピング、新しい日付順）
+  const monthEntries = entries.filter(e => e.date.startsWith(monthPrefix))
+  const monthEvents = calendarEvents.filter(e => e.date.startsWith(monthPrefix))
+  const groupDates = Array.from(new Set([...monthEntries.map(e => e.date), ...monthEvents.map(e => e.date)]))
+    .sort((a, b) => b.localeCompare(a))
 
   const navTitle: Record<NavTab, string> = {
-    calendar: '共有家計簿',
+    calendar: 'カレンダー',
     manage: '管理',
     report: 'レポート',
     menu: 'メニュー',
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col">
+    <div className="min-h-screen bg-gray-50 dark:bg-black flex flex-col">
       {/* Header */}
-      <header className="bg-white dark:bg-gray-900 shadow-sm px-4 py-3 sticky top-0 z-10 flex items-center justify-between flex-shrink-0">
+      <header className="bg-white dark:bg-black shadow-sm dark:shadow-none dark:border-b dark:border-gray-800 px-4 py-3 sticky top-0 z-10 flex items-center justify-between flex-shrink-0">
         <div className="w-20" />
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{navTitle[activeNav]}</h1>
         <div className="flex items-center gap-1">
@@ -323,19 +375,20 @@ export default function CalendarPage() {
 
       {activeNav === 'calendar' && <>
       {/* Month navigation */}
-      <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
+      <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-black border-b border-gray-100 dark:border-gray-800">
         <button
           onClick={prevMonth}
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-2xl text-gray-600 dark:text-gray-300"
         >
           ‹
         </button>
-        <div className="text-center">
-          <div className="text-lg font-semibold text-gray-800 dark:text-gray-100">{currentYear}年{currentMonth + 1}月</div>
-          <div className="text-xs flex gap-3 justify-center mt-0.5">
-            <span className="text-red-500">支出 ¥{totalExpense.toLocaleString()}</span>
-            <span className="text-green-500">収入 ¥{totalIncome.toLocaleString()}</span>
-          </div>
+        <div className="text-center bg-gray-100 dark:bg-gray-800/70 rounded-2xl px-4 py-2">
+          <span className="text-base font-bold text-gray-800 dark:text-gray-100">
+            {currentYear}年{currentMonth + 1}月
+          </span>
+          <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
+            （{currentMonth + 1}月1日－{currentMonth + 1}月{daysInMonth}日）
+          </span>
         </div>
         <button
           onClick={nextMonth}
@@ -346,14 +399,14 @@ export default function CalendarPage() {
       </div>
 
       {/* Calendar */}
-      <div className="border-t border-l border-gray-200 dark:border-gray-700">
+      <div className="bg-white dark:bg-black">
         {/* 曜日ヘッダー */}
         <div className="grid grid-cols-7">
           {DAYS_OF_WEEK.map((day, i) => (
             <div
               key={day}
-              className={`border-r border-b border-gray-200 dark:border-gray-700 text-center text-xs font-medium py-1.5 bg-gray-50 dark:bg-gray-800/60 ${
-                i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'
+              className={`text-center text-xs font-medium py-2 ${
+                i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'
               }`}
             >
               {day}
@@ -361,217 +414,198 @@ export default function CalendarPage() {
           ))}
         </div>
 
-        {/* 日付セル */}
-        <div className="grid grid-cols-7">
-          {Array.from({ length: firstDay }).map((_, i) => (
-            <div key={`empty-${i}`} className="min-h-[76px] border-r border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/20" />
-          ))}
+        {/* 日付セル（週単位：日付 → 予定の帯 → 金額 の順） */}
+        {weeks.map((week, wi) => {
+          // カレンダー上は1週あたり予定を1本だけ表示（重なる分は明細一覧で確認）
+          const lanes = getWeekLanes(week).slice(0, 1)
+          return (
+            <div key={wi} className="pb-1">
+              {/* 日付番号 */}
+              <div className="grid grid-cols-7">
+                {week.map((cell, ci) => {
+                  if (!cell.dateStr || cell.day === null) {
+                    return <div key={`empty-${wi}-${ci}`} className="h-6" />
+                  }
+                  const isToday = cell.dateStr === todayStr
+                  const isFuture = cell.dateStr > todayStr
+                  return (
+                    <div
+                      key={cell.dateStr}
+                      onClick={() => handleDayClick(cell.dateStr!)}
+                      className={`px-1.5 pt-1 pb-0.5 cursor-pointer ${isFuture ? 'opacity-40' : ''}`}
+                    >
+                      <span
+                        className={`inline-flex items-center justify-center w-5 h-5 text-xs font-semibold leading-none rounded-full ${
+                          isToday
+                            ? 'bg-gray-700 dark:bg-gray-200 text-white dark:text-gray-900'
+                            : ci === 0 ? 'text-red-500' : ci === 6 ? 'text-blue-500' : 'text-gray-700 dark:text-gray-200'
+                        }`}
+                      >
+                        {cell.day}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
 
-          {Array.from({ length: daysInMonth }).map((_, i) => {
-            const day = i + 1
-            const dateStr = `${monthPrefix}-${String(day).padStart(2, '0')}`
-            const dayEntries = getEntriesForDay(day)
-            const isToday = dateStr === todayStr
-            const isFocused = dateStr === focusedDate
-            const dayOfWeek = (firstDay + i) % 7
-            const dayExpenseTotal = dayEntries.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0)
-            const dayIncomeTotal = dayEntries.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0)
-            const dayEvents = getEventsForDay(day)
-
-            return (
-              <div
-                key={day}
-                onClick={() => handleDayClick(dateStr)}
-                className={`min-h-[76px] p-1 border-r border-b border-gray-200 dark:border-gray-700 cursor-pointer transition-colors flex flex-col overflow-hidden ${
-                  isFocused
-                    ? 'bg-blue-50 dark:bg-blue-950/50'
-                    : isToday
-                    ? 'bg-blue-50/60 dark:bg-blue-950/20'
-                    : 'bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/60'
-                }`}
-              >
-                {/* 日付番号 */}
-                <div
-                  className={`text-xs font-semibold leading-none ${
-                    dayOfWeek === 0 ? 'text-red-500' : dayOfWeek === 6 ? 'text-blue-500' : 'text-gray-700 dark:text-gray-300'
-                  }`}
-                >
-                  {isToday ? (
-                    <span className="inline-flex items-center justify-center w-4 h-4 bg-blue-500 rounded-full text-white text-[10px]">
-                      {day}
-                    </span>
-                  ) : day}
-                </div>
-
-                {/* 予定・収入・支出 */}
-                <div className="mt-auto">
-                  {dayEvents.length > 0 && (
-                    <div className="space-y-px">
-                      {dayEvents.map(ev => (
-                        <div key={ev.id} className="text-[9px] text-purple-500 leading-tight truncate">
-                          {ev.title}
+              {/* 予定の帯（一番上） */}
+              {lanes.length > 0 && (
+                <div className="px-1 space-y-0.5 mb-0.5">
+                  {lanes.map((lane, li) => (
+                    <div key={li} className="grid grid-cols-7 gap-x-0.5">
+                      {lane.map(seg => (
+                        <div
+                          key={seg.event.id}
+                          onClick={() => openEditEvent(seg.event)}
+                          style={{
+                            backgroundColor: seg.event.color,
+                            gridColumnStart: seg.colStart + 1,
+                            gridColumnEnd: seg.colEnd + 2,
+                          }}
+                          className={`text-white text-[10px] font-medium px-1.5 py-0.5 truncate leading-tight cursor-pointer ${
+                            seg.isStart ? 'rounded-l-md' : ''
+                          } ${seg.isEnd ? 'rounded-r-md' : ''}`}
+                        >
+                          {seg.event.title}
                         </div>
                       ))}
                     </div>
-                  )}
-                  {(dayIncomeTotal > 0 || dayExpenseTotal > 0) && (
-                    <div className={`space-y-px ${dayEvents.length > 0 ? 'mt-1' : ''}`}>
+                  ))}
+                </div>
+              )}
+
+              {/* 金額 */}
+              <div className="grid grid-cols-7">
+                {week.map((cell, ci) => {
+                  if (!cell.dateStr || cell.day === null) {
+                    return <div key={`empty-amt-${wi}-${ci}`} />
+                  }
+                  const dayEntries = getEntriesForDay(cell.day)
+                  const isFuture = cell.dateStr > todayStr
+                  const dayExpenseTotal = dayEntries.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0)
+                  const dayIncomeTotal = dayEntries.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0)
+                  return (
+                    <div
+                      key={`${cell.dateStr}-amt`}
+                      onClick={() => handleDayClick(cell.dateStr!)}
+                      className={`px-1.5 cursor-pointer ${isFuture ? 'opacity-40' : ''}`}
+                    >
                       {dayIncomeTotal > 0 && (
-                        <div className="text-[9px] text-green-500 leading-tight text-right">
-                          {dayIncomeTotal >= 10000 ? `+${(dayIncomeTotal / 10000).toFixed(1)}万` : `+¥${dayIncomeTotal.toLocaleString()}`}
+                        <div className="text-[10px] text-sky-500 leading-tight text-right">
+                          {dayIncomeTotal.toLocaleString()}
                         </div>
                       )}
                       {dayExpenseTotal > 0 && (
-                        <div className="text-[9px] text-red-500 leading-tight text-right">
-                          {dayExpenseTotal >= 10000 ? `${(dayExpenseTotal / 10000).toFixed(1)}万` : `¥${dayExpenseTotal.toLocaleString()}`}
+                        <div className="text-[10px] text-orange-500 leading-tight text-right">
+                          {dayExpenseTotal.toLocaleString()}
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
+                  )
+                })}
               </div>
-            )
-          })}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* サマリーバー */}
+      <div className="grid grid-cols-3 divide-x divide-gray-200 dark:divide-gray-800 bg-gray-50 dark:bg-gray-900/60 border-y border-gray-200 dark:border-gray-800 py-3">
+        <div className="text-center">
+          <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">収入</div>
+          <div className="text-sm font-bold text-sky-500">{totalIncome.toLocaleString()}円</div>
         </div>
+        <div className="text-center">
+          <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">支出</div>
+          <div className="text-sm font-bold text-red-500">{totalExpense.toLocaleString()}円</div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">合計</div>
+          <div className="text-sm font-bold text-red-500">
+            {totalIncome - totalExpense < 0 ? '-' : ''}{Math.abs(totalIncome - totalExpense).toLocaleString()}円
+          </div>
+        </div>
+      </div>
 
-        {/* 日付の明細（カレンダー直下） */}
-        {focusedDate && typeof focusedDayLabel === 'object' && (
-          <div ref={detailRef} className="mt-0 bg-white dark:bg-gray-900 border-t-2 border-blue-400 dark:border-blue-500 overflow-hidden">
-            {/* 明細ヘッダー */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-              <div>
-                <span className="font-semibold text-gray-800 dark:text-gray-100">
-                  {focusedDayLabel.month}月{focusedDayLabel.day}日
+      {/* 月内の明細（日付ごとにグルーピング） */}
+      <div className="bg-white dark:bg-black divide-y divide-gray-100 dark:divide-gray-800">
+        {groupDates.map(dateStr => {
+          const [y, m, d] = dateStr.split('-').map(Number)
+          const dowIdx = new Date(y, m - 1, d).getDay()
+          const dow = DAYS_OF_WEEK[dowIdx]
+          const dowColor = dowIdx === 0 ? 'text-red-500' : dowIdx === 6 ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'
+          const dayEntries = monthEntries.filter(e => e.date === dateStr)
+          const dayEvents = monthEvents.filter(e => e.date === dateStr)
+          const dayExpense = dayEntries.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0)
+          const dayIncome = dayEntries.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0)
+          const dayNet = dayIncome - dayExpense
+
+          return (
+            <div key={dateStr} ref={el => { groupRefs.current[dateStr] = el }}>
+              <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-900/60">
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  {y}年{m}月{d}日<span className={`ml-1 font-normal ${dowColor}`}>（{dow}）</span>
                 </span>
-                <span className={`ml-1 text-sm ${focusedDayLabel.dowColor}`}>
-                  （{focusedDayLabel.dow}）
-                </span>
-                <div className="flex gap-3 mt-0.5 text-xs flex-wrap">
-                  {focusedExpenseTotal > 0 && <span className="text-red-500">支出 ¥{focusedExpenseTotal.toLocaleString()}</span>}
-                  {focusedIncomeTotal > 0 && <span className="text-green-500">収入 ¥{focusedIncomeTotal.toLocaleString()}</span>}
-                  {focusedEvents.length > 0 && <span className="text-purple-500">予定 {focusedEvents.length}件</span>}
-                </div>
+                {dayNet !== 0 && (
+                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                    {dayNet > 0 ? '+' : '-'}{Math.abs(dayNet).toLocaleString()}円
+                  </span>
+                )}
               </div>
-              <button
-                onClick={() => setFocusedDate(null)}
-                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 transition-colors"
-              >
-                ✕
-              </button>
+
+              {dayEvents.map(ev => (
+                <button
+                  key={ev.id}
+                  onClick={() => openEditEvent(ev)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-900 text-left"
+                >
+                  <span className="w-3.5 h-3.5 rounded-sm flex-shrink-0" style={{ backgroundColor: ev.color }} />
+                  <span className="flex-1 min-w-0 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+                    {ev.title}
+                    {ev.endDate !== ev.date && (
+                      <span className="text-gray-400 dark:text-gray-500 font-normal">
+                        　{Number(ev.date.split('-')[1])}/{Number(ev.date.split('-')[2])}〜{Number(ev.endDate.split('-')[1])}/{Number(ev.endDate.split('-')[2])}
+                      </span>
+                    )}
+                    {ev.note && <span className="text-gray-400 dark:text-gray-500 font-normal">　（{ev.note}）</span>}
+                  </span>
+                  <span className="text-gray-300 dark:text-gray-600 flex-shrink-0">›</span>
+                </button>
+              ))}
+
+              {dayEntries.map(entry => {
+                const cat = categories.find(c => c.id === entry.categoryId)
+                return (
+                  <button
+                    key={entry.id}
+                    onClick={() => openEditEntry(entry)}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-900 text-left"
+                  >
+                    <span className="text-xl flex-shrink-0">{cat?.emoji ?? '📌'}</span>
+                    <span className="flex-1 min-w-0 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+                      {cat?.name ?? '未分類'}
+                      {entry.memo && <span className="text-gray-400 dark:text-gray-500 font-normal">　（{entry.memo}）</span>}
+                      {entry.warikan && (
+                        <span className="ml-1.5 text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-md">
+                          割り勘{entry.paidBy ? ` · ${entry.paidBy}` : ''}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-base font-bold text-gray-800 dark:text-gray-100 flex-shrink-0">
+                      {entry.amount.toLocaleString()}円
+                    </span>
+                    <span className="text-gray-300 dark:text-gray-600 flex-shrink-0">›</span>
+                  </button>
+                )
+              })}
             </div>
+          )
+        })}
 
-            {/* 予定セクション */}
-            {focusedEvents.length > 0 && (
-              <div>
-                <div className="px-4 py-2 bg-purple-50 dark:bg-purple-950/20">
-                  <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">予定</span>
-                </div>
-                <div className="divide-y divide-gray-50 dark:divide-gray-800">
-                  {focusedEvents.map(ev => (
-                    <div key={ev.id} className="flex items-start gap-3 px-4 py-3">
-                      <span className="text-xl flex-shrink-0 mt-0.5">🗓️</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-800 dark:text-gray-100">{ev.title}</div>
-                        {ev.note && <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{ev.note}</div>}
-                      </div>
-                      <button
-                        onClick={() => openEditEvent(ev)}
-                        className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/40 text-gray-300 dark:text-gray-600 hover:text-blue-400 transition-colors"
-                        aria-label="編集"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                      </button>
-                      <button
-                        onClick={() => deleteEvent(ev.id)}
-                        className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-red-50 dark:hover:bg-red-900/40 text-gray-300 dark:text-gray-600 hover:text-red-400 transition-colors"
-                        aria-label="削除"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 収支セクション */}
-            {focusedEntries.length > 0 && (
-              <div>
-                <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/50">
-                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">収支</span>
-                </div>
-                <div className="divide-y divide-gray-50 dark:divide-gray-800">
-                  {focusedEntries.map(entry => {
-                    const cat = categories.find(c => c.id === entry.categoryId)
-                    return (
-                      <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
-                        <span className="text-xl flex-shrink-0">{cat?.emoji ?? '📌'}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                              {cat?.name ?? '未分類'}
-                            </span>
-                            {entry.memo && (
-                              <span className="text-xs text-gray-400 dark:text-gray-500 truncate">
-                                · {entry.memo}
-                              </span>
-                            )}
-                            {entry.warikan && (
-                              <span className="text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-md">
-                                割り勘{entry.paidBy ? ` · ${entry.paidBy}` : ''}
-                              </span>
-                            )}
-                          </div>
-                          <div className={`text-sm font-semibold ${
-                            entry.type === 'expense' ? 'text-red-500' : 'text-green-500'
-                          }`}>
-                            {entry.type === 'income' ? '+' : '-'}¥{entry.amount.toLocaleString()}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => openEditEntry(entry)}
-                          className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/40 text-gray-300 dark:text-gray-600 hover:text-blue-400 transition-colors"
-                          aria-label="編集"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        </button>
-                        <button
-                          onClick={() => deleteEntry(entry.id)}
-                          className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-red-50 dark:hover:bg-red-900/40 text-gray-300 dark:text-gray-600 hover:text-red-400 transition-colors"
-                          aria-label="削除"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* 空状態 */}
-            {focusedEntries.length === 0 && focusedEvents.length === 0 && (
-              <div className="flex flex-col items-center py-8 text-gray-400 dark:text-gray-600">
-                <span className="text-3xl mb-1">📭</span>
-                <p className="text-sm">この日の記録はありません</p>
-              </div>
-            )}
-
-            {/* 追加ボタン */}
-            <div className="px-4 py-3 border-t border-gray-50 dark:border-gray-800 flex gap-2">
-              <button
-                onClick={() => openDialog(focusedDate!)}
-                className="flex-1 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-medium text-sm transition-colors"
-              >
-                + 収支を追加
-              </button>
-              <button
-                onClick={() => openDialog(focusedDate!, 'event')}
-                className="flex-1 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-600 active:bg-purple-700 text-white font-medium text-sm transition-colors"
-              >
-                + 予定を追加
-              </button>
-            </div>
+        {groupDates.length === 0 && (
+          <div className="flex flex-col items-center py-10 text-gray-400 dark:text-gray-600">
+            <span className="text-3xl mb-1">📭</span>
+            <p className="text-sm">この月の記録はありません</p>
           </div>
         )}
       </div>
@@ -594,7 +628,7 @@ export default function CalendarPage() {
       {/* 追加ダイアログ */}
       {dialogOpen && (
         <div
-          className="fixed inset-0 bg-black/50 flex items-end justify-center z-20"
+          className="fixed inset-0 bg-black/50 flex items-end justify-center z-30"
           onClick={e => { if (e.target === e.currentTarget) setDialogOpen(false) }}
         >
           <div className="bg-white dark:bg-gray-900 rounded-t-2xl w-full max-w-lg px-6 pt-5 pb-10 shadow-xl">
@@ -619,15 +653,38 @@ export default function CalendarPage() {
             </div>
 
             <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-1">日付</label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={e => setSelectedDate(e.target.value)}
-                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
-                />
-              </div>
+              {activeTab === 'event' ? (
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-1">開始日</label>
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={e => setSelectedDate(e.target.value)}
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-1">終了日</label>
+                    <input
+                      type="date"
+                      value={eventEndDate}
+                      onChange={e => setEventEndDate(e.target.value)}
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-1">日付</label>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={e => setSelectedDate(e.target.value)}
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+                  />
+                </div>
+              )}
 
               {activeTab === 'event' ? (
                 <>
@@ -653,6 +710,21 @@ export default function CalendarPage() {
                       onKeyDown={e => { if (e.key === 'Enter') saveEntry() }}
                       className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
                     />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-2">色</label>
+                    <div className="flex flex-wrap gap-2">
+                      {EVENT_COLORS.map(c => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setEventColor(c)}
+                          aria-label={`色 ${c}`}
+                          className={`w-8 h-8 rounded-full transition-transform ${eventColor === c ? 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-900 scale-110' : ''}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </>
               ) : (
@@ -781,33 +853,43 @@ export default function CalendarPage() {
               )}
             </div>
 
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setDialogOpen(false)}
-                className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-medium text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={saveEntry}
-                disabled={activeTab === 'event' ? !eventTitle.trim() : (!amount || Number(amount) <= 0)}
-                className={`flex-1 py-3 rounded-xl font-medium text-sm transition-colors text-white disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 ${
-                  activeTab === 'expense'
-                    ? 'bg-red-500 hover:bg-red-600'
-                    : activeTab === 'income'
-                    ? 'bg-green-500 hover:bg-green-600'
-                    : 'bg-purple-500 hover:bg-purple-600'
-                }`}
-              >
-                {editingEntryId || editingEventId ? '保存' : '追加'}
-              </button>
+            <div className="flex items-center gap-3 mt-6">
+              {(editingEntryId || editingEventId) && (
+                <button
+                  onClick={deleteFromDialog}
+                  className="py-3 px-4 rounded-xl text-red-500 font-medium text-sm hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                >
+                  削除
+                </button>
+              )}
+              <div className="flex-1 flex gap-3">
+                <button
+                  onClick={() => setDialogOpen(false)}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-medium text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={saveEntry}
+                  disabled={activeTab === 'event' ? !eventTitle.trim() : (!amount || Number(amount) <= 0)}
+                  className={`flex-1 py-3 rounded-xl font-medium text-sm transition-colors text-white disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 ${
+                    activeTab === 'expense'
+                      ? 'bg-red-500 hover:bg-red-600'
+                      : activeTab === 'income'
+                      ? 'bg-green-500 hover:bg-green-600'
+                      : 'bg-purple-500 hover:bg-purple-600'
+                  }`}
+                >
+                  {editingEntryId || editingEventId ? '保存' : '追加'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* ボトムナビ */}
-      <nav className="fixed bottom-0 inset-x-0 h-16 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 flex items-center z-20">
+      <nav className="fixed bottom-0 inset-x-0 h-16 bg-white dark:bg-black border-t border-gray-200 dark:border-gray-800 flex items-center z-20">
         {([
           {
             key: 'calendar' as NavTab,
@@ -870,6 +952,8 @@ export default function CalendarPage() {
           </button>
         ))}
       </nav>
+
+      <SettingsInfoModal open={settingsInfoOpen} onClose={() => setSettingsInfoOpen(false)} />
     </div>
   )
 }

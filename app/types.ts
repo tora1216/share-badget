@@ -26,10 +26,23 @@ export interface FixedCost {
 
 export interface CalendarEvent {
   id: string
-  date: string // YYYY-MM-DD
+  date: string // YYYY-MM-DD（開始日）
+  endDate: string // YYYY-MM-DD（終了日、単日の場合は date と同じ）
   title: string
   note?: string
+  color: string // 帯の背景色（hex）
 }
+
+export const EVENT_COLORS: string[] = [
+  '#2dd4bf', // teal
+  '#22c55e', // green
+  '#a16207', // brown
+  '#eab308', // gold
+  '#ec4899', // pink
+  '#ef4444', // red
+  '#3b82f6', // blue
+  '#a855f7', // purple
+]
 
 export const DEFAULT_FIXED_CATEGORIES: Category[] = [
   { id: 'f1', name: '住居費',  emoji: '🏠', type: 'expense' },

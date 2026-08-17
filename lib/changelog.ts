@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.0.0";
+export const APP_VERSION = "1.1.0";
 
 export type ChangelogEntry = {
   version: string;
@@ -8,6 +8,20 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.1.0",
+    date: "2026-08-18",
+    title: "カレンダーデザイン刷新・予定機能を強化",
+    changes: [
+      "カレンダーを枠線なしのすっきりしたデザインに刷新",
+      "月内の収支明細を日付ごとにグルーピングして一覧表示",
+      "予定に開始日・終了日・色を設定できるように変更",
+      "複数日にまたがる予定をカレンダー上に帯で表示",
+      "同じ週に予定が重なる場合はカレンダー上に1つだけ表示",
+      "編集ダイアログに削除ボタンを追加",
+      "ダイアログとフッターナビの重なりを修正",
+    ],
+  },
   {
     version: "1.0.0",
     date: "2026-03-07",
