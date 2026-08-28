@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.1.0";
+export const APP_VERSION = "2.0.0";
 
 export type ChangelogEntry = {
   version: string;
@@ -8,6 +8,18 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "2.0.0",
+    date: "2026-08-28",
+    title: "ログイン・ルーム機能・割り勘の大幅強化",
+    changes: [
+      "Googleログインに対応（実名・アイコンでメンバーを表示）",
+      "招待コード＋合言葉で参加するルーム機能を追加。複数ルームに参加可能",
+      "割り勘の分担方法に均等・比率・金額を追加し、支払った人・精算済みを記録できるように変更",
+      "「精算」タブを追加し、未精算・精算済みの割り勘をまとめて管理",
+      "カテゴリごとに月間予算を設定できるように変更",
+    ],
+  },
   {
     version: "1.1.0",
     date: "2026-08-18",

@@ -1,0 +1,37 @@
+rules_version = '2';
+
+// このアプリは Google ログインで本人確認だけ行い、あとは
+// 「合言葉を知っている（＝ハッシュ値から導出した正しい groupId を知っている）」
+// ことを条件にルームへの読み書きを許可する簡易的な方式です。
+// list を禁止しているため、groupId や招待コードを知らない第三者が
+// 一覧を総当たりで見つけることはできません。
+//
+// 招待コード（inviteCodes/{code}）は groupId への単なる目印であり、
+// これ自体は秘密情報を持ちません。参加には正しい合言葉が別途必要です。
+//
+// users/{uid} は各ユーザー自身の「所属ルーム一覧」を保存する場所で、
+// 本人（同じ uid でログインしている人）だけが読み書きできます。
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /groups/{groupId} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow write: if request.auth != null;
+
+      match /data/{docId} {
+        allow read, write: if request.auth != null;
+      }
+    }
+
+    match /inviteCodes/{code} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

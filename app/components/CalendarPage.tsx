@@ -1,14 +1,24 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import type { Entry, Category, CalendarEvent, FixedCost } from '../types'
+import { doc, setDoc, onSnapshot } from 'firebase/firestore'
+import { onAuthStateChanged, type User } from 'firebase/auth'
+import type { Entry, Category, CalendarEvent, FixedCost, WarikanSplitMethod, Participant } from '../types'
 import { DEFAULT_CATEGORIES, EVENT_COLORS } from '../types'
+import { splitEqual, splitByRatio } from '../../lib/warikan'
+import { db, auth } from '../../lib/firebase'
+import type { UserRooms } from '../../lib/rooms'
+import { getWarikanDefaults, setWarikanDefaults as persistWarikanDefaults, DEFAULT_WARIKAN_DEFAULTS, type WarikanDefaults } from '../../lib/settings'
 import ManagePage from './ManagePage'
 import ReportPage from './ReportPage'
+import WarikanListPage from './WarikanListPage'
 import MenuPage from './MenuPage'
 import SettingsInfoModal from './SettingsInfoModal'
+import LoginPage from './LoginPage'
+import RoomGate from './RoomGate'
+import RoomListModal from './RoomListModal'
 
-type NavTab = 'calendar' | 'manage' | 'report' | 'menu'
+type NavTab = 'calendar' | 'manage' | 'report' | 'warikan' | 'menu'
 
 const DAYS_OF_WEEK = ['日', '月', '火', '水', '木', '金', '土']
 
@@ -18,24 +28,39 @@ export default function CalendarPage() {
 
   const [currentYear, setCurrentYear] = useState(today.getFullYear())
   const [currentMonth, setCurrentMonth] = useState(today.getMonth())
+  const [authUser, setAuthUser] = useState<User | null>(null)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [userRooms, setUserRooms] = useState<UserRooms | null>(null)
+  const [userRoomsChecked, setUserRoomsChecked] = useState(false)
+  const [roomName, setRoomName] = useState('')
   const [entries, setEntries] = useState<Entry[]>([])
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES)
   const [members, setMembers] = useState<string[]>([])
+  const [participants, setParticipants] = useState<Participant[]>([])
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
   const [darkMode, setDarkMode] = useState(false)
+  const [warikanDefaults, setWarikanDefaultsState] = useState<WarikanDefaults>(DEFAULT_WARIKAN_DEFAULTS)
+
+  const activeGroupId = userRooms?.mainRoomId || ''
+  const myDisplayName = participants.find(p => p.uid === authUser?.uid)?.displayName ?? authUser?.displayName ?? ''
 
   // 日付ごとの明細グループへのスクロール参照
   const groupRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   // 追加ダイアログ state
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<'expense' | 'income' | 'event'>('expense')
+  const [activeTab, setActiveTab] = useState<'expense' | 'event'>('expense')
   const [selectedDate, setSelectedDate] = useState(todayStr)
   const [amount, setAmount] = useState('')
   const [memo, setMemo] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [warikan, setWarikan] = useState(false)
   const [paidBy, setPaidBy] = useState('')
+  const [warikanParticipants, setWarikanParticipants] = useState<string[]>([])
+  const [warikanSettled, setWarikanSettled] = useState(false)
+  const [warikanSplitMethod, setWarikanSplitMethod] = useState<WarikanSplitMethod>('equal')
+  const [warikanRatios, setWarikanRatios] = useState<Record<string, number>>({})
+  const [warikanAmounts, setWarikanAmounts] = useState<Record<string, number>>({})
   // 予定ダイアログ用
   const [eventTitle, setEventTitle] = useState('')
   const [eventNote, setEventNote] = useState('')
@@ -47,35 +72,142 @@ export default function CalendarPage() {
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null)
   const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const [settingsInfoOpen, setSettingsInfoOpen] = useState(false)
+  const [roomListOpen, setRoomListOpen] = useState(false)
+  const [addingRoom, setAddingRoom] = useState(false)
 
   // ダブルクリック検出用
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastClickedDateRef = useRef<string | null>(null)
 
+  // ダークモードは端末ごとの表示設定なので今まで通り localStorage のまま
   useEffect(() => {
-    const storedEntries = localStorage.getItem('share-badget-entries')
-    if (storedEntries) setEntries(JSON.parse(storedEntries))
-    const storedCategories = localStorage.getItem('share-badget-categories')
-    if (storedCategories) setCategories(JSON.parse(storedCategories))
-    const storedMembers = localStorage.getItem('share-badget-members')
-    if (storedMembers) setMembers(JSON.parse(storedMembers))
-    const storedEvents = localStorage.getItem('share-badget-events')
-    if (storedEvents) {
-      const parsed = JSON.parse(storedEvents) as Partial<CalendarEvent>[]
-      setCalendarEvents(parsed.map(e => ({
-        id: e.id!,
-        date: e.date!,
-        endDate: e.endDate ?? e.date!,
-        title: e.title!,
-        note: e.note,
-        color: e.color ?? EVENT_COLORS[0],
-      })))
-    }
-    const storedFixed = localStorage.getItem('share-badget-fixed-costs')
-    if (storedFixed) setFixedCosts(JSON.parse(storedFixed))
     const isDark = localStorage.getItem('share-badget-dark') === 'true'
     setDarkMode(isDark)
   }, [])
+
+  // 割り勘のデフォルト設定も端末（ユーザー）ごとのローカル設定
+  useEffect(() => {
+    setWarikanDefaultsState(getWarikanDefaults())
+  }, [])
+
+  const saveWarikanDefaults = (next: WarikanDefaults) => {
+    persistWarikanDefaults(next)
+    setWarikanDefaultsState(next)
+  }
+
+  // Googleログイン状態を確認
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, user => {
+      setAuthUser(user)
+      setAuthChecked(true)
+      if (!user) {
+        setUserRooms(null)
+        setUserRoomsChecked(true)
+      }
+    })
+    return () => unsubAuth()
+  }, [])
+
+  // ログインしているユーザーが所属しているルーム一覧を購読
+  useEffect(() => {
+    if (!authUser) return
+    setUserRoomsChecked(false)
+    const unsub = onSnapshot(doc(db, 'users', authUser.uid), snap => {
+      setUserRooms(snap.exists() ? (snap.data() as UserRooms) : { rooms: [], mainRoomId: '' })
+      setUserRoomsChecked(true)
+    })
+    return () => unsub()
+  }, [authUser])
+
+  // メインルームが決まったら Firestore の各ドキュメントに購読を張る（リアルタイム共有）
+  useEffect(() => {
+    if (!activeGroupId) return
+    const col = (name: string) => doc(db, 'groups', activeGroupId, 'data', name)
+    const unsubscribers = [
+      onSnapshot(col('entries'), snap => {
+        setEntries((snap.data()?.items as Entry[]) ?? [])
+      }),
+      onSnapshot(col('categories'), snap => {
+        const items = snap.data()?.items as Category[] | undefined
+        setCategories(items && items.length > 0 ? items : DEFAULT_CATEGORIES)
+      }),
+      onSnapshot(col('members'), snap => {
+        setMembers((snap.data()?.items as string[]) ?? [])
+      }),
+      onSnapshot(col('participants'), snap => {
+        setParticipants((snap.data()?.items as Participant[]) ?? [])
+      }),
+      onSnapshot(col('fixedCosts'), snap => {
+        setFixedCosts((snap.data()?.items as FixedCost[]) ?? [])
+      }),
+      onSnapshot(col('events'), snap => {
+        const items = (snap.data()?.items as Partial<CalendarEvent>[]) ?? []
+        setCalendarEvents(items.map(e => ({
+          id: e.id!,
+          date: e.date!,
+          endDate: e.endDate ?? e.date!,
+          title: e.title!,
+          note: e.note,
+          color: e.color ?? EVENT_COLORS[0],
+        })))
+      }),
+      onSnapshot(col('meta'), snap => {
+        setRoomName((snap.data()?.name as string | undefined) ?? '')
+      }),
+    ]
+    return () => unsubscribers.forEach(u => u())
+  }, [activeGroupId])
+
+  const switchRoom = (groupId: string) => {
+    if (!authUser || !userRooms) return
+    setDoc(doc(db, 'users', authUser.uid), { rooms: userRooms.rooms, mainRoomId: groupId })
+      .catch(err => console.error('ルームの切り替えに失敗しました', err))
+  }
+
+  const leaveRoom = () => {
+    if (!authUser || !userRooms) return
+    const remaining = userRooms.rooms.filter(r => r.groupId !== activeGroupId)
+    const nextMainRoomId = remaining.length > 0 ? remaining[remaining.length - 1].groupId : ''
+    setDoc(doc(db, 'users', authUser.uid), { rooms: remaining, mainRoomId: nextMainRoomId })
+      .catch(err => console.error('ルームを離れる処理に失敗しました', err))
+    setEntries([])
+    setCategories(DEFAULT_CATEGORIES)
+    setMembers([])
+    setParticipants([])
+    setCalendarEvents([])
+    setFixedCosts([])
+    setRoomName('')
+  }
+
+  const renameDisplayName = (name: string) => {
+    const trimmed = name.trim()
+    const uid = authUser?.uid
+    if (!trimmed || !uid || !activeGroupId) return
+    if (!members.includes(trimmed)) writeGroupData('members', [...members, trimmed])
+    writeGroupData('participants', participants.map(p => (p.uid === uid ? { ...p, displayName: trimmed } : p)))
+  }
+
+  // 割り勘方法・金額・参加メンバーの変更に応じてメンバー別の割り勘額を再計算
+  useEffect(() => {
+    if (!warikan) return
+    if (warikanSplitMethod === 'amount') {
+      setWarikanAmounts(prev => {
+        const next: Record<string, number> = {}
+        warikanParticipants.forEach(m => { next[m] = prev[m] ?? 0 })
+        return next
+      })
+      return
+    }
+    const n = warikanParticipants.length
+    if (n === 0) { setWarikanAmounts({}); return }
+    const total = Number(amount) || 0
+    const amounts = warikanSplitMethod === 'equal'
+      ? splitEqual(total, n)
+      : splitByRatio(total, warikanParticipants.map(m => warikanRatios[m] ?? 50))
+    const next: Record<string, number> = {}
+    warikanParticipants.forEach((m, i) => { next[m] = amounts[i] })
+    setWarikanAmounts(next)
+  }, [warikan, warikanSplitMethod, amount, warikanParticipants, warikanRatios])
 
   const toggleDarkMode = () => {
     const next = !darkMode
@@ -102,19 +234,20 @@ export default function CalendarPage() {
     }
   }
 
-  const firstCategoryId = (type: 'expense' | 'income') =>
-    categories.find(c => c.type === type)?.id ?? ''
+  const firstCategoryId = () =>
+    categories.find(c => c.type === 'expense')?.id ?? ''
 
-  const openDialog = (dateStr: string, tab: 'expense' | 'income' | 'event' = 'expense') => {
+  const openDialog = (dateStr: string, tab: 'expense' | 'event' = 'expense') => {
     setEditingEntryId(null)
     setEditingEventId(null)
     setSelectedDate(dateStr)
     setActiveTab(tab)
     setAmount('')
     setMemo('')
-    setCategoryId(firstCategoryId('expense'))
-    setWarikan(false)
-    setPaidBy('')
+    setCategoryId(firstCategoryId())
+    setWarikan(warikanDefaults.defaultOn)
+    setPaidBy(warikanDefaults.defaultOn ? myDisplayName : '')
+    resetWarikanDetails()
     setEventTitle('')
     setEventNote('')
     setEventEndDate(dateStr)
@@ -122,16 +255,29 @@ export default function CalendarPage() {
     setDialogOpen(true)
   }
 
+  const resetWarikanDetails = () => {
+    setWarikanParticipants(members)
+    setWarikanSettled(false)
+    setWarikanSplitMethod(warikanDefaults.splitMethod)
+    setWarikanRatios({})
+    setWarikanAmounts({})
+  }
+
   const openEditEntry = (entry: Entry) => {
     setEditingEntryId(entry.id)
     setEditingEventId(null)
     setSelectedDate(entry.date)
-    setActiveTab(entry.type)
+    setActiveTab('expense')
     setAmount(String(entry.amount))
     setMemo(entry.memo)
     setCategoryId(entry.categoryId)
     setWarikan(entry.warikan ?? false)
     setPaidBy(entry.paidBy ?? '')
+    setWarikanParticipants(entry.warikanParticipants ?? members)
+    setWarikanSettled(entry.warikanSettled ?? false)
+    setWarikanSplitMethod(entry.warikanSplitMethod ?? 'equal')
+    setWarikanRatios({})
+    setWarikanAmounts(entry.warikanSplits ?? {})
     setEventTitle('')
     setEventNote('')
     setDialogOpen(true)
@@ -151,12 +297,20 @@ export default function CalendarPage() {
     setCategoryId('')
     setWarikan(false)
     setPaidBy('')
+    resetWarikanDetails()
     setDialogOpen(true)
   }
 
-  const handleTabChange = (tab: 'expense' | 'income' | 'event') => {
+  const handleTabChange = (tab: 'expense' | 'event') => {
     setActiveTab(tab)
-    if (tab !== 'event') setCategoryId(firstCategoryId(tab))
+    if (tab !== 'event') setCategoryId(firstCategoryId())
+  }
+
+  // グループのFirestoreドキュメントを丸ごと上書き保存する（このアプリは配列全体を1ドキュメントに保存する方式）
+  const writeGroupData = (name: string, items: unknown[]) => {
+    if (!activeGroupId) return
+    setDoc(doc(db, 'groups', activeGroupId, 'data', name), { items })
+      .catch(err => console.error(`Firestoreへの書き込みに失敗しました (${name})`, err))
   }
 
   const saveEntry = () => {
@@ -174,40 +328,59 @@ export default function CalendarPage() {
       } else {
         updated = [...calendarEvents, { id: Date.now().toString(), date: start, endDate: end, title: eventTitle.trim(), note: eventNote.trim() || undefined, color: eventColor }]
       }
-      setCalendarEvents(updated)
-      localStorage.setItem('share-badget-events', JSON.stringify(updated))
+      writeGroupData('events', updated)
       setEditingEventId(null)
       setDialogOpen(false)
       return
     }
-    const parsed = Number(amount)
-    if (!amount || isNaN(parsed) || parsed <= 0) return
+    const warikanTotal = warikanParticipants.reduce((s, m) => s + (warikanAmounts[m] ?? 0), 0)
+    const parsed = warikan ? warikanTotal : Number(amount)
+    if (!parsed || isNaN(parsed) || parsed <= 0) return
+    const warikanFields = warikan
+      ? {
+          warikan: true as const,
+          paidBy,
+          warikanParticipants,
+          warikanSettled,
+          warikanSplitMethod,
+          warikanSplits: Object.fromEntries(warikanParticipants.map(m => [m, warikanAmounts[m] ?? 0])),
+        }
+      : {
+          warikan: undefined,
+          paidBy: undefined,
+          warikanParticipants: undefined,
+          warikanSettled: undefined,
+          warikanSplitMethod: undefined,
+          warikanSplits: undefined,
+        }
     let updated: Entry[]
     if (editingEntryId) {
       updated = entries.map(e =>
         e.id === editingEntryId
-          ? { ...e, date: selectedDate, amount: parsed, memo, categoryId, type: activeTab, ...(warikan ? { warikan: true, paidBy } : { warikan: undefined, paidBy: undefined }) }
+          ? { ...e, date: selectedDate, amount: parsed, memo, categoryId, type: activeTab, ...warikanFields }
           : e
       )
     } else {
-      updated = [...entries, { id: Date.now().toString(), date: selectedDate, amount: parsed, memo, categoryId, type: activeTab, ...(warikan && { warikan: true, paidBy }) }]
+      updated = [...entries, { id: Date.now().toString(), date: selectedDate, amount: parsed, memo, categoryId, type: activeTab, createdBy: myDisplayName || undefined, ...warikanFields }]
     }
-    setEntries(updated)
-    localStorage.setItem('share-badget-entries', JSON.stringify(updated))
+    writeGroupData('entries', updated)
     setEditingEntryId(null)
     setDialogOpen(false)
   }
 
   const deleteEvent = (id: string) => {
     const updated = calendarEvents.filter(e => e.id !== id)
-    setCalendarEvents(updated)
-    localStorage.setItem('share-badget-events', JSON.stringify(updated))
+    writeGroupData('events', updated)
   }
 
   const deleteEntry = (id: string) => {
     const updated = entries.filter(e => e.id !== id)
-    setEntries(updated)
-    localStorage.setItem('share-badget-entries', JSON.stringify(updated))
+    writeGroupData('entries', updated)
+  }
+
+  const toggleEntrySettled = (id: string) => {
+    const updated = entries.map(e => (e.id === id ? { ...e, warikanSettled: !e.warikanSettled } : e))
+    writeGroupData('entries', updated)
   }
 
   const deleteFromDialog = () => {
@@ -219,18 +392,15 @@ export default function CalendarPage() {
   }
 
   const updateCategories = (updated: Category[]) => {
-    setCategories(updated)
-    localStorage.setItem('share-badget-categories', JSON.stringify(updated))
+    writeGroupData('categories', updated)
   }
 
   const updateMembers = (updated: string[]) => {
-    setMembers(updated)
-    localStorage.setItem('share-badget-members', JSON.stringify(updated))
+    writeGroupData('members', updated)
   }
 
   const updateFixedCosts = (updated: FixedCost[]) => {
-    setFixedCosts(updated)
-    localStorage.setItem('share-badget-fixed-costs', JSON.stringify(updated))
+    writeGroupData('fixedCosts', updated)
   }
 
   const prevMonth = () => {
@@ -294,30 +464,53 @@ export default function CalendarPage() {
     .filter(e => e.date.startsWith(monthPrefix) && e.type === 'expense')
     .reduce((sum, e) => sum + e.amount, 0)
 
-  const totalIncome = entries
-    .filter(e => e.date.startsWith(monthPrefix) && e.type === 'income')
-    .reduce((sum, e) => sum + e.amount, 0)
-
   const filteredCategories = categories.filter(c => c.type === activeTab)
 
-  // 月内の明細（日付ごとにグルーピング、新しい日付順）
+  // 月内の明細（日付ごとにグルーピング、新しい日付順）。予定はカレンダー上にのみ表示するため明細一覧には含めない
   const monthEntries = entries.filter(e => e.date.startsWith(monthPrefix))
-  const monthEvents = calendarEvents.filter(e => e.date.startsWith(monthPrefix))
-  const groupDates = Array.from(new Set([...monthEntries.map(e => e.date), ...monthEvents.map(e => e.date)]))
+  const groupDates = Array.from(new Set(monthEntries.map(e => e.date)))
     .sort((a, b) => b.localeCompare(a))
 
   const navTitle: Record<NavTab, string> = {
     calendar: 'カレンダー',
     manage: '管理',
     report: 'レポート',
+    warikan: '精算',
     menu: 'メニュー',
+  }
+
+  const activeRoom = userRooms?.rooms.find(r => r.groupId === activeGroupId)
+
+  if (!authChecked) return null
+  if (!authUser) return <LoginPage />
+  if (!userRoomsChecked) return null
+  if (!activeGroupId) return <RoomGate currentUser={authUser} />
+  if (addingRoom) {
+    return (
+      <RoomGate
+        currentUser={authUser}
+        onDone={() => setAddingRoom(false)}
+        onCancel={() => setAddingRoom(false)}
+      />
+    )
   }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-black flex flex-col">
       {/* Header */}
       <header className="bg-white dark:bg-black shadow-sm dark:shadow-none dark:border-b dark:border-gray-800 px-4 py-3 sticky top-0 z-10 flex items-center justify-between flex-shrink-0">
-        <div className="w-20" />
+        <div className="w-20 flex items-center">
+          <button
+            onClick={() => setRoomListOpen(true)}
+            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
+            aria-label="ルーム一覧"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+          </button>
+        </div>
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{navTitle[activeNav]}</h1>
         <div className="flex items-center gap-1">
           <button
@@ -356,11 +549,21 @@ export default function CalendarPage() {
         <ManagePage
           fixedCosts={fixedCosts}
           onUpdate={updateFixedCosts}
-          categories={categories}
+          members={members}
+          displayName={myDisplayName}
+          warikanDefaults={warikanDefaults}
         />
       )}
       {activeNav === 'report' && (
         <ReportPage entries={entries} categories={categories} />
+      )}
+      {activeNav === 'warikan' && (
+        <WarikanListPage
+          entries={entries}
+          categories={categories}
+          onToggleSettled={toggleEntrySettled}
+          onOpenEntry={openEditEntry}
+        />
       )}
       {activeNav === 'menu' && (
         <MenuPage
@@ -370,6 +573,17 @@ export default function CalendarPage() {
           onUpdateMembers={updateMembers}
           darkMode={darkMode}
           onToggleDarkMode={toggleDarkMode}
+          roomName={roomName}
+          roomInviteCode={activeRoom?.inviteCode ?? ''}
+          roomPassphrase={activeRoom?.passphrase ?? ''}
+          displayName={myDisplayName}
+          photoURL={authUser.photoURL ?? undefined}
+          email={authUser.email ?? undefined}
+          onRenameDisplayName={renameDisplayName}
+          onLeaveRoom={leaveRoom}
+          participants={participants}
+          warikanDefaults={warikanDefaults}
+          onUpdateWarikanDefaults={saveWarikanDefaults}
         />
       )}
 
@@ -401,7 +615,7 @@ export default function CalendarPage() {
       {/* Calendar */}
       <div className="bg-white dark:bg-black">
         {/* 曜日ヘッダー */}
-        <div className="grid grid-cols-7">
+        <div className="grid grid-cols-7 divide-x divide-gray-200 dark:divide-gray-700 border-b border-gray-200 dark:border-gray-700">
           {DAYS_OF_WEEK.map((day, i) => (
             <div
               key={day}
@@ -419,9 +633,12 @@ export default function CalendarPage() {
           // カレンダー上は1週あたり予定を1本だけ表示（重なる分は明細一覧で確認）
           const lanes = getWeekLanes(week).slice(0, 1)
           return (
-            <div key={wi} className="pb-1">
+            <div
+              key={wi}
+              className={`pb-1 ${wi > 0 ? 'border-t border-gray-200 dark:border-gray-700' : ''}`}
+            >
               {/* 日付番号 */}
-              <div className="grid grid-cols-7">
+              <div className="grid grid-cols-7 divide-x divide-gray-200 dark:divide-gray-700">
                 {week.map((cell, ci) => {
                   if (!cell.dateStr || cell.day === null) {
                     return <div key={`empty-${wi}-${ci}`} className="h-6" />
@@ -475,7 +692,7 @@ export default function CalendarPage() {
               )}
 
               {/* 金額 */}
-              <div className="grid grid-cols-7">
+              <div className="grid grid-cols-7 divide-x divide-gray-200 dark:divide-gray-700">
                 {week.map((cell, ci) => {
                   if (!cell.dateStr || cell.day === null) {
                     return <div key={`empty-amt-${wi}-${ci}`} />
@@ -483,18 +700,12 @@ export default function CalendarPage() {
                   const dayEntries = getEntriesForDay(cell.day)
                   const isFuture = cell.dateStr > todayStr
                   const dayExpenseTotal = dayEntries.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0)
-                  const dayIncomeTotal = dayEntries.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0)
                   return (
                     <div
                       key={`${cell.dateStr}-amt`}
                       onClick={() => handleDayClick(cell.dateStr!)}
                       className={`px-1.5 cursor-pointer ${isFuture ? 'opacity-40' : ''}`}
                     >
-                      {dayIncomeTotal > 0 && (
-                        <div className="text-[10px] text-sky-500 leading-tight text-right">
-                          {dayIncomeTotal.toLocaleString()}
-                        </div>
-                      )}
                       {dayExpenseTotal > 0 && (
                         <div className="text-[10px] text-orange-500 leading-tight text-right">
                           {dayExpenseTotal.toLocaleString()}
@@ -510,21 +721,9 @@ export default function CalendarPage() {
       </div>
 
       {/* サマリーバー */}
-      <div className="grid grid-cols-3 divide-x divide-gray-200 dark:divide-gray-800 bg-gray-50 dark:bg-gray-900/60 border-y border-gray-200 dark:border-gray-800 py-3">
-        <div className="text-center">
-          <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">収入</div>
-          <div className="text-sm font-bold text-sky-500">{totalIncome.toLocaleString()}円</div>
-        </div>
-        <div className="text-center">
-          <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">支出</div>
-          <div className="text-sm font-bold text-red-500">{totalExpense.toLocaleString()}円</div>
-        </div>
-        <div className="text-center">
-          <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">合計</div>
-          <div className="text-sm font-bold text-red-500">
-            {totalIncome - totalExpense < 0 ? '-' : ''}{Math.abs(totalIncome - totalExpense).toLocaleString()}円
-          </div>
-        </div>
+      <div className="bg-gray-50 dark:bg-gray-900/60 border-y border-gray-200 dark:border-gray-800 py-3 text-center">
+        <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">今月の支出</div>
+        <div className="text-sm font-bold text-red-500">{totalExpense.toLocaleString()}円</div>
       </div>
 
       {/* 月内の明細（日付ごとにグルーピング） */}
@@ -535,10 +734,7 @@ export default function CalendarPage() {
           const dow = DAYS_OF_WEEK[dowIdx]
           const dowColor = dowIdx === 0 ? 'text-red-500' : dowIdx === 6 ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'
           const dayEntries = monthEntries.filter(e => e.date === dateStr)
-          const dayEvents = monthEvents.filter(e => e.date === dateStr)
           const dayExpense = dayEntries.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0)
-          const dayIncome = dayEntries.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0)
-          const dayNet = dayIncome - dayExpense
 
           return (
             <div key={dateStr} ref={el => { groupRefs.current[dateStr] = el }}>
@@ -546,32 +742,12 @@ export default function CalendarPage() {
                 <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   {y}年{m}月{d}日<span className={`ml-1 font-normal ${dowColor}`}>（{dow}）</span>
                 </span>
-                {dayNet !== 0 && (
+                {dayExpense > 0 && (
                   <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                    {dayNet > 0 ? '+' : '-'}{Math.abs(dayNet).toLocaleString()}円
+                    {dayExpense.toLocaleString()}円
                   </span>
                 )}
               </div>
-
-              {dayEvents.map(ev => (
-                <button
-                  key={ev.id}
-                  onClick={() => openEditEvent(ev)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-900 text-left"
-                >
-                  <span className="w-3.5 h-3.5 rounded-sm flex-shrink-0" style={{ backgroundColor: ev.color }} />
-                  <span className="flex-1 min-w-0 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
-                    {ev.title}
-                    {ev.endDate !== ev.date && (
-                      <span className="text-gray-400 dark:text-gray-500 font-normal">
-                        　{Number(ev.date.split('-')[1])}/{Number(ev.date.split('-')[2])}〜{Number(ev.endDate.split('-')[1])}/{Number(ev.endDate.split('-')[2])}
-                      </span>
-                    )}
-                    {ev.note && <span className="text-gray-400 dark:text-gray-500 font-normal">　（{ev.note}）</span>}
-                  </span>
-                  <span className="text-gray-300 dark:text-gray-600 flex-shrink-0">›</span>
-                </button>
-              ))}
 
               {dayEntries.map(entry => {
                 const cat = categories.find(c => c.id === entry.categoryId)
@@ -589,6 +765,14 @@ export default function CalendarPage() {
                         <span className="ml-1.5 text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-md">
                           割り勘{entry.paidBy ? ` · ${entry.paidBy}` : ''}
                         </span>
+                      )}
+                      {entry.warikan && entry.warikanSettled && (
+                        <span className="ml-1 text-xs bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded-md">
+                          精算済
+                        </span>
+                      )}
+                      {entry.createdBy && (
+                        <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">by {entry.createdBy}</span>
                       )}
                     </span>
                     <span className="text-base font-bold text-gray-800 dark:text-gray-100 flex-shrink-0">
@@ -635,19 +819,19 @@ export default function CalendarPage() {
             <div className="w-10 h-1 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-4" />
 
             <div className="flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1 mb-5">
-              {(['expense', 'income', 'event'] as const).map(tab => (
+              {(['expense', 'event'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => handleTabChange(tab)}
                   className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
                     activeTab === tab
                       ? `bg-white dark:bg-gray-700 shadow-sm ${
-                          tab === 'expense' ? 'text-red-500' : tab === 'income' ? 'text-green-500' : 'text-purple-500'
+                          tab === 'expense' ? 'text-red-500' : 'text-purple-500'
                         }`
                       : 'text-gray-500 dark:text-gray-400'
                   }`}
                 >
-                  {tab === 'expense' ? '支出' : tab === 'income' ? '収入' : '予定'}
+                  {tab === 'expense' ? '支出' : '予定'}
                 </button>
               ))}
             </div>
@@ -675,13 +859,13 @@ export default function CalendarPage() {
                   </div>
                 </div>
               ) : (
-                <div>
-                  <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-1">日付</label>
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-gray-600 dark:text-gray-300 w-16 flex-shrink-0">日付</label>
                   <input
                     type="date"
                     value={selectedDate}
                     onChange={e => setSelectedDate(e.target.value)}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+                    className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
                   />
                 </div>
               )}
@@ -729,41 +913,41 @@ export default function CalendarPage() {
                 </>
               ) : (
                 <>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-1">金額（円）</label>
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm font-medium text-gray-600 dark:text-gray-300 w-16 flex-shrink-0">金額</label>
                     <input
                       type="number"
                       inputMode="numeric"
-                      placeholder="0"
+                      placeholder="円"
                       value={amount}
                       onChange={e => setAmount(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') saveEntry() }}
-                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+                      className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
                       autoFocus
                     />
                   </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-1">メモ（任意）</label>
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm font-medium text-gray-600 dark:text-gray-300 w-16 flex-shrink-0">メモ</label>
                     <input
                       type="text"
-                      placeholder="例：スーパー、外食..."
+                      placeholder="例：スーパー、外食...（任意）"
                       value={memo}
                       onChange={e => setMemo(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') saveEntry() }}
-                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+                      className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
                     />
                   </div>
 
                   <div>
                     <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-2">カテゴリ</label>
                 {filteredCategories.length > 0 ? (
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-4 gap-1.5">
                     {filteredCategories.map(c => (
                       <button
                         key={c.id}
                         type="button"
                         onClick={() => setCategoryId(c.id)}
-                        className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 transition-colors ${
+                        className={`flex flex-col items-center gap-0.5 py-2 px-1 rounded-xl border-2 transition-colors ${
                           categoryId === c.id
                             ? activeTab === 'expense'
                               ? 'border-red-400 bg-red-50 dark:bg-red-950/40 dark:border-red-500'
@@ -771,8 +955,8 @@ export default function CalendarPage() {
                             : 'border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600'
                         }`}
                       >
-                        <span className="text-2xl leading-none">{c.emoji}</span>
-                        <span className={`text-xs font-medium leading-tight text-center ${
+                        <span className="text-lg leading-none">{c.emoji}</span>
+                        <span className={`text-[10px] font-medium leading-tight text-center ${
                           categoryId === c.id
                             ? activeTab === 'expense' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'
                             : 'text-gray-600 dark:text-gray-300'
@@ -801,7 +985,12 @@ export default function CalendarPage() {
                   <label className="text-sm font-medium text-gray-600 dark:text-gray-300">割り勘</label>
                   <button
                     type="button"
-                    onClick={() => { setWarikan(w => !w); setPaidBy('') }}
+                    onClick={() => {
+                      const next = !warikan
+                      setWarikan(next)
+                      setPaidBy(next ? myDisplayName : '')
+                      resetWarikanDetails()
+                    }}
                     className={`relative w-11 h-6 rounded-full transition-colors ${
                       warikan ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'
                     }`}
@@ -814,38 +1003,148 @@ export default function CalendarPage() {
                 </div>
 
                 {warikan && (
-                  <div className="mt-3">
-                    <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-2">
-                      立替者
-                    </label>
-                    {members.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {members.map(m => (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => setPaidBy(prev => prev === m ? '' : m)}
-                            className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 transition-colors ${
-                              paidBy === m
-                                ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/40 dark:border-blue-500 text-blue-600 dark:text-blue-400'
-                                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-                            }`}
-                          >
-                            {m}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-400 dark:text-gray-500">
-                        メンバーがいません。
+                  <div className="mt-4 space-y-4">
+                    {/* 支払った人 */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                          支払った人（任意）
+                        </label>
                         <button
-                          onClick={() => { setDialogOpen(false); setActiveNav('menu') }}
-                          className="text-blue-500 underline ml-1"
+                          type="button"
+                          onClick={() => setWarikanSettled(s => !s)}
+                          className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400"
                         >
-                          設定から追加
+                          <span className={`w-4 h-4 rounded flex items-center justify-center text-[10px] border-2 transition-colors ${
+                            warikanSettled
+                              ? 'bg-green-500 border-green-500 text-white'
+                              : 'border-gray-300 dark:border-gray-600'
+                          }`}>
+                            {warikanSettled && '✓'}
+                          </span>
+                          精算済
                         </button>
-                      </p>
-                    )}
+                      </div>
+                      {warikanParticipants.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {warikanParticipants.map(m => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setPaidBy(prev => prev === m ? '' : m)}
+                              className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 transition-colors ${
+                                paidBy === m
+                                  ? 'border-green-400 bg-green-50 dark:bg-green-950/40 dark:border-green-500 text-green-600 dark:text-green-400'
+                                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                              }`}
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-400 dark:text-gray-500">
+                          メンバーがいません。
+                          <button
+                            onClick={() => { setDialogOpen(false); setActiveNav('menu') }}
+                            className="text-blue-500 underline ml-1"
+                          >
+                            設定から追加
+                          </button>
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 割り勘方法 */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                          割り勘方法
+                        </label>
+                        <div className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+                          {([
+                            { key: 'equal', label: '均等' },
+                            { key: 'ratio', label: '比率' },
+                            { key: 'amount', label: '金額' },
+                          ] as const).map(opt => (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              onClick={() => setWarikanSplitMethod(opt.key)}
+                              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+                                warikanSplitMethod === opt.key
+                                  ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 shadow-sm'
+                                  : 'text-gray-500 dark:text-gray-400'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {warikanParticipants.length > 0 ? (
+                        <div className="space-y-2">
+                          <div className="space-y-2">
+                            {warikanParticipants.map(m => (
+                              <div
+                                key={m}
+                                className="flex items-center justify-between gap-2 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200 min-w-0 truncate">{m}</span>
+                                  {warikanSplitMethod === 'ratio' && (
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                      <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        min={0}
+                                        value={warikanRatios[m] ?? 50}
+                                        onChange={e => setWarikanRatios(prev => ({ ...prev, [m]: Number(e.target.value) || 0 }))}
+                                        className="w-14 border border-gray-200 dark:border-gray-700 rounded-lg px-1.5 py-1 text-sm text-left bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                      />
+                                      <span className="text-xs text-gray-500 dark:text-gray-400">%</span>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="w-24 flex-shrink-0 text-right">
+                                  {warikanSplitMethod === 'amount' ? (
+                                    <input
+                                      type="number"
+                                      inputMode="numeric"
+                                      value={warikanAmounts[m] ?? 0}
+                                      onChange={e => setWarikanAmounts(prev => ({ ...prev, [m]: Number(e.target.value) || 0 }))}
+                                      className="w-24 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-sm text-right bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                    />
+                                  ) : (
+                                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                                      {(warikanAmounts[m] ?? 0).toLocaleString()}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800">
+                            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">合計</span>
+                            <span className="text-sm font-bold text-gray-800 dark:text-gray-100">
+                              ¥{warikanParticipants.reduce((s, m) => s + (warikanAmounts[m] ?? 0), 0).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-400 dark:text-gray-500">
+                          メンバーがいません。
+                          <button
+                            onClick={() => { setDialogOpen(false); setActiveNav('menu') }}
+                            className="text-blue-500 underline ml-1"
+                          >
+                            設定から追加
+                          </button>
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
                   </div>
@@ -871,12 +1170,16 @@ export default function CalendarPage() {
                 </button>
                 <button
                   onClick={saveEntry}
-                  disabled={activeTab === 'event' ? !eventTitle.trim() : (!amount || Number(amount) <= 0)}
+                  disabled={
+                    activeTab === 'event'
+                      ? !eventTitle.trim()
+                      : warikan
+                        ? warikanParticipants.reduce((s, m) => s + (warikanAmounts[m] ?? 0), 0) <= 0
+                        : (!amount || Number(amount) <= 0)
+                  }
                   className={`flex-1 py-3 rounded-xl font-medium text-sm transition-colors text-white disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 ${
                     activeTab === 'expense'
                       ? 'bg-red-500 hover:bg-red-600'
-                      : activeTab === 'income'
-                      ? 'bg-green-500 hover:bg-green-600'
                       : 'bg-purple-500 hover:bg-purple-600'
                   }`}
                 >
@@ -927,6 +1230,18 @@ export default function CalendarPage() {
             ),
           },
           {
+            key: 'warikan' as NavTab,
+            label: '精算',
+            icon: (
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 3l4 4-4 4"/>
+                <path d="M21 7H9"/>
+                <path d="M7 21l-4-4 4-4"/>
+                <path d="M3 17h12"/>
+              </svg>
+            ),
+          },
+          {
             key: 'menu' as NavTab,
             label: 'メニュー',
             icon: (
@@ -954,6 +1269,14 @@ export default function CalendarPage() {
       </nav>
 
       <SettingsInfoModal open={settingsInfoOpen} onClose={() => setSettingsInfoOpen(false)} />
+      <RoomListModal
+        open={roomListOpen}
+        onClose={() => setRoomListOpen(false)}
+        rooms={userRooms?.rooms ?? []}
+        mainRoomId={activeGroupId}
+        onSwitchRoom={switchRoom}
+        onAddRoom={() => { setRoomListOpen(false); setAddingRoom(true) }}
+      />
     </div>
   )
 }

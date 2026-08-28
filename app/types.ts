@@ -3,6 +3,17 @@ export interface Category {
   name: string
   emoji: string
   type: 'expense' | 'income'
+  monthlyBudget?: number // 支出カテゴリのみ使用（月あたりの予算額、円）
+}
+
+export type WarikanSplitMethod = 'equal' | 'ratio' | 'amount'
+
+// Googleログインで参加したメンバーの一覧表示用（uid で名寄せする）
+export interface Participant {
+  uid: string
+  displayName: string
+  photoURL?: string
+  email?: string
 }
 
 export interface Entry {
@@ -14,6 +25,11 @@ export interface Entry {
   type: 'expense' | 'income'
   warikan?: boolean
   paidBy?: string
+  warikanParticipants?: string[]
+  warikanSettled?: boolean
+  warikanSplitMethod?: WarikanSplitMethod
+  warikanSplits?: Record<string, number>
+  createdBy?: string
 }
 
 export interface FixedCost {
@@ -22,6 +38,12 @@ export interface FixedCost {
   type: 'expense' | 'income'
   categoryId: string
   memo?: string
+  warikan?: boolean
+  paidBy?: string
+  warikanParticipants?: string[]
+  warikanSplitMethod?: WarikanSplitMethod
+  warikanSplits?: Record<string, number>
+  createdBy?: string
 }
 
 export interface CalendarEvent {
@@ -63,8 +85,4 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'e7', name: '医療',   emoji: '💊', type: 'expense' },
   { id: 'e8', name: '被服費', emoji: '👕', type: 'expense' },
   { id: 'e9', name: 'その他', emoji: '📦', type: 'expense' },
-  { id: 'i1', name: '給与',   emoji: '💰', type: 'income' },
-  { id: 'i2', name: 'ボーナス', emoji: '🎁', type: 'income' },
-  { id: 'i3', name: '副収入', emoji: '💼', type: 'income' },
-  { id: 'i4', name: 'その他', emoji: '💵', type: 'income' },
 ]
