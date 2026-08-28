@@ -8,12 +8,12 @@ export interface Category {
 
 export type WarikanSplitMethod = 'equal' | 'ratio' | 'amount'
 
-// Googleログインで参加したメンバーの一覧表示用（uid で名寄せする）
+// ルーム参加メンバーの一覧表示用（uid で名寄せする）。displayName はニックネームで、
+// 本名保護のためGoogleアカウントのメールアドレスは保存しない
 export interface Participant {
   uid: string
   displayName: string
   photoURL?: string
-  email?: string
 }
 
 export interface Entry {
@@ -30,6 +30,7 @@ export interface Entry {
   warikanSplitMethod?: WarikanSplitMethod
   warikanSplits?: Record<string, number>
   createdBy?: string
+  fixedCostId?: string // 固定費から毎月自動生成された支出の場合、元の固定費のid
 }
 
 export interface FixedCost {

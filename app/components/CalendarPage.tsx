@@ -313,6 +313,39 @@ export default function CalendarPage() {
       .catch(err => console.error(`Firestoreへの書き込みに失敗しました (${name})`, err))
   }
 
+  // 固定費のうち、今月分の支出としてまだ計上されていないものを一覧化する
+  const thisMonthPrefix = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+  const pendingFixedCosts = fixedCosts.filter(f =>
+    f.type === 'expense' &&
+    !entries.some(e => e.fixedCostId === f.id && e.date.startsWith(thisMonthPrefix))
+  )
+
+  // ボタン操作で、今月分の固定費をまとめて支出として追加する
+  const addThisMonthFixedCosts = () => {
+    if (pendingFixedCosts.length === 0) return
+    const dateStr = `${thisMonthPrefix}-01`
+    const newEntries: Entry[] = pendingFixedCosts.map(f => ({
+      id: `${Date.now()}-${f.id}`,
+      date: dateStr,
+      amount: f.amount,
+      memo: f.memo ?? '',
+      categoryId: f.categoryId,
+      type: 'expense',
+      fixedCostId: f.id,
+      ...(f.warikan
+        ? {
+            warikan: true as const,
+            paidBy: f.paidBy,
+            warikanParticipants: f.warikanParticipants,
+            warikanSettled: false,
+            warikanSplitMethod: f.warikanSplitMethod,
+            warikanSplits: f.warikanSplits,
+          }
+        : {}),
+    }))
+    writeGroupData('entries', [...entries, ...newEntries])
+  }
+
   const saveEntry = () => {
     if (activeTab === 'event') {
       if (!eventTitle.trim()) return
@@ -361,7 +394,7 @@ export default function CalendarPage() {
           : e
       )
     } else {
-      updated = [...entries, { id: Date.now().toString(), date: selectedDate, amount: parsed, memo, categoryId, type: activeTab, createdBy: myDisplayName || undefined, ...warikanFields }]
+      updated = [...entries, { id: Date.now().toString(), date: selectedDate, amount: parsed, memo, categoryId, type: activeTab, ...warikanFields }]
     }
     writeGroupData('entries', updated)
     setEditingEntryId(null)
@@ -383,7 +416,13 @@ export default function CalendarPage() {
     writeGroupData('entries', updated)
   }
 
+  const settleAllUnsettled = () => {
+    const updated = entries.map(e => (e.warikan && !e.warikanSettled ? { ...e, warikanSettled: true } : e))
+    writeGroupData('entries', updated)
+  }
+
   const deleteFromDialog = () => {
+    if (!confirm('削除しますか？')) return
     if (editingEntryId) deleteEntry(editingEntryId)
     if (editingEventId) deleteEvent(editingEventId)
     setEditingEntryId(null)
@@ -413,12 +452,20 @@ export default function CalendarPage() {
     else setCurrentMonth(currentMonth + 1)
   }
 
+  const yearOptions = Array.from(new Set([
+    ...Array.from({ length: 8 }, (_, i) => today.getFullYear() - 6 + i),
+    currentYear,
+  ])).sort((a, b) => a - b)
+
   const firstDay = new Date(currentYear, currentMonth, 1).getDay()
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`
 
+  // 固定費から自動生成された支出はカレンダー上には表示しない（固定費タブ・精算・レポートには表示される）
+  const calendarEntries = entries.filter(e => !e.fixedCostId)
+
   const getEntriesForDay = (day: number) =>
-    entries.filter(e => e.date === `${monthPrefix}-${String(day).padStart(2, '0')}`)
+    calendarEntries.filter(e => e.date === `${monthPrefix}-${String(day).padStart(2, '0')}`)
 
   // 週ごとのセル配列（帯を週単位のグリッドで描画するため）
   type WeekCell = { day: number | null; dateStr: string | null }
@@ -460,20 +507,28 @@ export default function CalendarPage() {
     return lanes
   }
 
-  const totalExpense = entries
+  const totalExpense = calendarEntries
     .filter(e => e.date.startsWith(monthPrefix) && e.type === 'expense')
     .reduce((sum, e) => sum + e.amount, 0)
+
+  const unsettledTotal = entries
+    .filter(e => e.warikan && !e.warikanSettled)
+    .reduce((sum, e) => sum + e.amount, 0)
+
+  const fixedCostTotal = fixedCosts
+    .filter(f => f.type === 'expense')
+    .reduce((sum, f) => sum + f.amount, 0)
 
   const filteredCategories = categories.filter(c => c.type === activeTab)
 
   // 月内の明細（日付ごとにグルーピング、新しい日付順）。予定はカレンダー上にのみ表示するため明細一覧には含めない
-  const monthEntries = entries.filter(e => e.date.startsWith(monthPrefix))
+  const monthEntries = calendarEntries.filter(e => e.date.startsWith(monthPrefix))
   const groupDates = Array.from(new Set(monthEntries.map(e => e.date)))
     .sort((a, b) => b.localeCompare(a))
 
   const navTitle: Record<NavTab, string> = {
     calendar: 'カレンダー',
-    manage: '管理',
+    manage: '固定費',
     report: 'レポート',
     warikan: '精算',
     menu: 'メニュー',
@@ -489,6 +544,7 @@ export default function CalendarPage() {
     return (
       <RoomGate
         currentUser={authUser}
+        defaultNickname={myDisplayName}
         onDone={() => setAddingRoom(false)}
         onCancel={() => setAddingRoom(false)}
       />
@@ -498,7 +554,7 @@ export default function CalendarPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-black flex flex-col">
       {/* Header */}
-      <header className="bg-white dark:bg-black shadow-sm dark:shadow-none dark:border-b dark:border-gray-800 px-4 py-3 sticky top-0 z-10 flex items-center justify-between flex-shrink-0">
+      <header className="bg-white/70 dark:bg-black/50 backdrop-blur-xl backdrop-saturate-150 shadow-sm dark:shadow-none dark:border-b dark:border-white/10 px-4 py-3 sticky top-0 z-10 flex items-center justify-between flex-shrink-0">
         <div className="w-20 flex items-center">
           <button
             onClick={() => setRoomListOpen(true)}
@@ -512,23 +568,7 @@ export default function CalendarPage() {
           </button>
         </div>
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{navTitle[activeNav]}</h1>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={toggleDarkMode}
-            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
-            aria-label={darkMode ? 'ライトモードに切替' : 'ダークモードに切替'}
-          >
-            {darkMode ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="4"/>
-                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-              </svg>
-            )}
-          </button>
+        <div className="w-20 flex items-center justify-end">
           <button
             onClick={() => setSettingsInfoOpen(true)}
             className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
@@ -543,7 +583,7 @@ export default function CalendarPage() {
       </header>
 
       {/* ページコンテンツ */}
-      <main className="flex-1 overflow-y-auto pb-16">
+      <main className="flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
 
       {activeNav === 'manage' && (
         <ManagePage
@@ -552,6 +592,8 @@ export default function CalendarPage() {
           members={members}
           displayName={myDisplayName}
           warikanDefaults={warikanDefaults}
+          pendingCount={pendingFixedCosts.length}
+          onAddThisMonth={addThisMonthFixedCosts}
         />
       )}
       {activeNav === 'report' && (
@@ -562,28 +604,20 @@ export default function CalendarPage() {
           entries={entries}
           categories={categories}
           onToggleSettled={toggleEntrySettled}
+          onSettleAll={settleAllUnsettled}
           onOpenEntry={openEditEntry}
         />
       )}
       {activeNav === 'menu' && (
         <MenuPage
-          categories={categories}
-          onUpdateCategories={updateCategories}
-          members={members}
-          onUpdateMembers={updateMembers}
-          darkMode={darkMode}
-          onToggleDarkMode={toggleDarkMode}
           roomName={roomName}
           roomInviteCode={activeRoom?.inviteCode ?? ''}
           roomPassphrase={activeRoom?.passphrase ?? ''}
           displayName={myDisplayName}
           photoURL={authUser.photoURL ?? undefined}
-          email={authUser.email ?? undefined}
           onRenameDisplayName={renameDisplayName}
           onLeaveRoom={leaveRoom}
           participants={participants}
-          warikanDefaults={warikanDefaults}
-          onUpdateWarikanDefaults={saveWarikanDefaults}
         />
       )}
 
@@ -596,13 +630,25 @@ export default function CalendarPage() {
         >
           ‹
         </button>
-        <div className="text-center bg-gray-100 dark:bg-gray-800/70 rounded-2xl px-4 py-2">
-          <span className="text-base font-bold text-gray-800 dark:text-gray-100">
-            {currentYear}年{currentMonth + 1}月
-          </span>
-          <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
-            （{currentMonth + 1}月1日－{currentMonth + 1}月{daysInMonth}日）
-          </span>
+        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/70 rounded-2xl px-2 py-1.5">
+          <select
+            value={currentYear}
+            onChange={e => setCurrentYear(Number(e.target.value))}
+            className="bg-transparent text-base font-bold text-gray-800 dark:text-gray-100 focus:outline-none appearance-none text-right pl-1"
+          >
+            {yearOptions.map(y => (
+              <option key={y} value={y}>{y}年</option>
+            ))}
+          </select>
+          <select
+            value={currentMonth}
+            onChange={e => setCurrentMonth(Number(e.target.value))}
+            className="bg-transparent text-base font-bold text-gray-800 dark:text-gray-100 focus:outline-none appearance-none pr-1"
+          >
+            {Array.from({ length: 12 }, (_, i) => i).map(m => (
+              <option key={m} value={m}>{m + 1}月</option>
+            ))}
+          </select>
         </div>
         <button
           onClick={nextMonth}
@@ -635,10 +681,15 @@ export default function CalendarPage() {
           return (
             <div
               key={wi}
-              className={`pb-1 ${wi > 0 ? 'border-t border-gray-200 dark:border-gray-700' : ''}`}
+              className={`relative pb-1 ${wi > 0 ? 'border-t border-gray-200 dark:border-gray-700' : ''}`}
             >
+              {/* 縦の罫線（予定の帯があっても週全体で途切れないよう別レイヤーで描画） */}
+              <div className="absolute inset-0 grid grid-cols-7 divide-x divide-gray-200 dark:divide-gray-700 pointer-events-none">
+                {Array.from({ length: 7 }, (_, i) => <div key={i} />)}
+              </div>
+
               {/* 日付番号 */}
-              <div className="grid grid-cols-7 divide-x divide-gray-200 dark:divide-gray-700">
+              <div className="grid grid-cols-7">
                 {week.map((cell, ci) => {
                   if (!cell.dateStr || cell.day === null) {
                     return <div key={`empty-${wi}-${ci}`} className="h-6" />
@@ -649,7 +700,7 @@ export default function CalendarPage() {
                     <div
                       key={cell.dateStr}
                       onClick={() => handleDayClick(cell.dateStr!)}
-                      className={`px-1.5 pt-1 pb-0.5 cursor-pointer ${isFuture ? 'opacity-40' : ''}`}
+                      className={`px-1.5 pt-1 pb-0.5 text-center cursor-pointer ${isFuture ? 'opacity-40' : ''}`}
                     >
                       <span
                         className={`inline-flex items-center justify-center w-5 h-5 text-xs font-semibold leading-none rounded-full ${
@@ -692,7 +743,7 @@ export default function CalendarPage() {
               )}
 
               {/* 金額 */}
-              <div className="grid grid-cols-7 divide-x divide-gray-200 dark:divide-gray-700">
+              <div className="grid grid-cols-7">
                 {week.map((cell, ci) => {
                   if (!cell.dateStr || cell.day === null) {
                     return <div key={`empty-amt-${wi}-${ci}`} />
@@ -721,9 +772,19 @@ export default function CalendarPage() {
       </div>
 
       {/* サマリーバー */}
-      <div className="bg-gray-50 dark:bg-gray-900/60 border-y border-gray-200 dark:border-gray-800 py-3 text-center">
-        <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">今月の支出</div>
-        <div className="text-sm font-bold text-red-500">{totalExpense.toLocaleString()}円</div>
+      <div className="grid grid-cols-3 divide-x divide-gray-200 dark:divide-gray-800 bg-gray-50 dark:bg-gray-900/60 border-y border-gray-200 dark:border-gray-800 py-3">
+        <div className="text-center">
+          <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">今月の支出</div>
+          <div className="text-sm font-bold text-red-500">{totalExpense.toLocaleString()}円</div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">固定費</div>
+          <div className="text-sm font-bold text-gray-600 dark:text-gray-300">{fixedCostTotal.toLocaleString()}円</div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">未精算</div>
+          <div className="text-sm font-bold text-orange-500">{unsettledTotal.toLocaleString()}円</div>
+        </div>
       </div>
 
       {/* 月内の明細（日付ごとにグルーピング） */}
@@ -761,18 +822,15 @@ export default function CalendarPage() {
                     <span className="flex-1 min-w-0 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
                       {cat?.name ?? '未分類'}
                       {entry.memo && <span className="text-gray-400 dark:text-gray-500 font-normal">　（{entry.memo}）</span>}
-                      {entry.warikan && (
+                      {entry.warikan && entry.paidBy && (
                         <span className="ml-1.5 text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-md">
-                          割り勘{entry.paidBy ? ` · ${entry.paidBy}` : ''}
+                          {entry.paidBy}
                         </span>
                       )}
                       {entry.warikan && entry.warikanSettled && (
                         <span className="ml-1 text-xs bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded-md">
                           精算済
                         </span>
-                      )}
-                      {entry.createdBy && (
-                        <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">by {entry.createdBy}</span>
                       )}
                     </span>
                     <span className="text-base font-bold text-gray-800 dark:text-gray-100 flex-shrink-0">
@@ -802,7 +860,7 @@ export default function CalendarPage() {
       {activeNav === 'calendar' && (
         <button
           onClick={() => openDialog(todayStr)}
-          className="fixed bottom-20 right-6 w-14 h-14 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center text-3xl font-light transition-colors z-10"
+          className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-6 w-14 h-14 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center text-3xl font-light transition-colors z-10"
           aria-label="追加"
         >
           +
@@ -1191,8 +1249,9 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* ボトムナビ */}
-      <nav className="fixed bottom-0 inset-x-0 h-16 bg-white dark:bg-black border-t border-gray-200 dark:border-gray-800 flex items-center z-20">
+      {/* ボトムナビ（ホームインジケーターの safe area 分だけ下に余白を追加） */}
+      <nav className="fixed bottom-0 inset-x-0 pb-[env(safe-area-inset-bottom)] bg-white/70 dark:bg-black/50 backdrop-blur-xl backdrop-saturate-150 border-t border-black/5 dark:border-white/10 z-20">
+        <div className="h-16 flex items-center">
         {([
           {
             key: 'calendar' as NavTab,
@@ -1208,7 +1267,7 @@ export default function CalendarPage() {
           },
           {
             key: 'manage' as NavTab,
-            label: '管理',
+            label: '固定費',
             icon: (
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="7" width="20" height="14" rx="2"/>
@@ -1266,9 +1325,23 @@ export default function CalendarPage() {
             <span className="text-[10px] font-medium">{item.label}</span>
           </button>
         ))}
+        </div>
       </nav>
 
-      <SettingsInfoModal open={settingsInfoOpen} onClose={() => setSettingsInfoOpen(false)} />
+      <SettingsInfoModal
+        open={settingsInfoOpen}
+        onClose={() => setSettingsInfoOpen(false)}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
+        warikanDefaults={warikanDefaults}
+        onUpdateWarikanDefaults={saveWarikanDefaults}
+        categories={categories}
+        onUpdateCategories={updateCategories}
+        members={members}
+        onUpdateMembers={updateMembers}
+        entries={entries}
+        fixedCosts={fixedCosts}
+      />
       <RoomListModal
         open={roomListOpen}
         onClose={() => setRoomListOpen(false)}

@@ -7,10 +7,11 @@ interface Props {
   entries: Entry[]
   categories: Category[]
   onToggleSettled: (id: string) => void
+  onSettleAll: () => void
   onOpenEntry: (entry: Entry) => void
 }
 
-export default function WarikanListPage({ entries, categories, onToggleSettled, onOpenEntry }: Props) {
+export default function WarikanListPage({ entries, categories, onToggleSettled, onSettleAll, onOpenEntry }: Props) {
   const warikanEntries = entries
     .filter(e => e.warikan)
     .sort((a, b) => b.date.localeCompare(a.date))
@@ -23,7 +24,7 @@ export default function WarikanListPage({ entries, categories, onToggleSettled, 
 
   const renderRow = (entry: Entry) => {
     const cat = categories.find(c => c.id === entry.categoryId)
-    const [y, m, d] = entry.date.split('-').map(Number)
+    const [, m, d] = entry.date.split('-').map(Number)
     return (
       <div
         key={entry.id}
@@ -31,18 +32,18 @@ export default function WarikanListPage({ entries, categories, onToggleSettled, 
       >
         <button onClick={() => onOpenEntry(entry)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
           <span className="text-xl flex-shrink-0">{cat?.emoji ?? '📌'}</span>
-          <span className="flex-1 min-w-0">
-            <span className="block text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
-              {cat?.name ?? '未分類'}
-              {entry.memo && <span className="text-gray-400 dark:text-gray-500 font-normal">　（{entry.memo}）</span>}
-            </span>
-            <span className="block text-xs text-gray-400 dark:text-gray-500">
-              {y}/{m}/{d}
-              {entry.paidBy && ` ・ ${entry.paidBy} が支払い`}
-            </span>
+          <span className="flex-1 min-w-0 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+            {cat?.name ?? '未分類'}
+            {entry.memo && <span className="text-gray-400 dark:text-gray-500 font-normal">　（{entry.memo}）</span>}
+            <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{m}/{d}</span>
+            {entry.paidBy && (
+              <span className="ml-1.5 text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-md">
+                {entry.paidBy}
+              </span>
+            )}
           </span>
         </button>
-        <span className="text-sm font-bold text-gray-800 dark:text-gray-100 flex-shrink-0">
+        <span className="text-base font-bold text-gray-800 dark:text-gray-100 flex-shrink-0">
           {entry.amount.toLocaleString()}円
         </span>
         <button
@@ -91,7 +92,18 @@ export default function WarikanListPage({ entries, categories, onToggleSettled, 
       )}
 
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
-        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 px-4 pt-4 pb-2">未精算</p>
+        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">未精算</p>
+          {unsettled.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { if (confirm(`未精算の${unsettled.length}件をすべて精算済みにしますか？`)) onSettleAll() }}
+              className="text-xs font-medium text-blue-500 hover:underline"
+            >
+              すべて精算済みにする
+            </button>
+          )}
+        </div>
         {unsettled.length > 0 ? (
           <div className="divide-y divide-gray-50 dark:divide-gray-800">
             {unsettled.map(renderRow)}

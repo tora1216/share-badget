@@ -9,6 +9,7 @@ import { DEFAULT_CATEGORIES, type Participant } from '../types'
 
 interface Props {
   currentUser: User
+  defaultNickname?: string
   onDone?: () => void
   onCancel?: () => void
 }
@@ -40,11 +41,12 @@ async function addRoomToUser(uid: string, room: RoomMembership) {
   await setDoc(ref, { rooms: nextRooms, mainRoomId: room.groupId })
 }
 
-export default function RoomGate({ currentUser, onDone, onCancel }: Props) {
+export default function RoomGate({ currentUser, defaultNickname, onDone, onCancel }: Props) {
   const [tab, setTab] = useState<Tab>('create')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const [nickname, setNickname] = useState(defaultNickname ?? '')
   const [roomName, setRoomName] = useState('')
   const [passphrase, setPassphrase] = useState('')
   const [createdRoom, setCreatedRoom] = useState<{ groupId: string; name: string; passphrase: string; inviteCode: string } | null>(null)
@@ -55,15 +57,15 @@ export default function RoomGate({ currentUser, onDone, onCancel }: Props) {
 
   const buildParticipant = (): Participant => ({
     uid: currentUser.uid,
-    displayName: currentUser.displayName ?? 'メンバー',
+    displayName: nickname.trim(),
     photoURL: currentUser.photoURL ?? undefined,
-    email: currentUser.email ?? undefined,
   })
 
   const handleCreate = async () => {
     const name = roomName.trim()
     const trimmedPass = passphrase.trim()
-    if (!name || !trimmedPass) return
+    const trimmedNickname = nickname.trim()
+    if (!name || !trimmedPass || !trimmedNickname) return
     setLoading(true)
     setError('')
     try {
@@ -155,7 +157,8 @@ export default function RoomGate({ currentUser, onDone, onCancel }: Props) {
   const handleJoin = async () => {
     const code = inviteCodeInput.trim().toUpperCase()
     const trimmedPass = joinPassphrase.trim()
-    if (!code || !trimmedPass) return
+    const trimmedNickname = nickname.trim()
+    if (!code || !trimmedPass || !trimmedNickname) return
     setLoading(true)
     setError('')
     try {
@@ -275,8 +278,7 @@ export default function RoomGate({ currentUser, onDone, onCancel }: Props) {
             <span className="w-7 h-7 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-sm flex-shrink-0">👤</span>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-400 dark:text-gray-500">ログイン中</p>
-            <p className="text-sm text-gray-700 dark:text-gray-300 truncate">{currentUser.displayName ?? currentUser.email}</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300">ログイン中</p>
           </div>
           <button
             type="button"
@@ -285,6 +287,18 @@ export default function RoomGate({ currentUser, onDone, onCancel }: Props) {
           >
             別のアカウント
           </button>
+        </div>
+
+        <div>
+          <input
+            type="text"
+            placeholder="ニックネーム（例：たろう）"
+            value={nickname}
+            onChange={e => setNickname(e.target.value)}
+            className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400"
+            autoFocus={!defaultNickname}
+          />
+          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">他のメンバーに表示される名前です。本名でなくてもOK</p>
         </div>
 
         <div className="flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1">
@@ -329,7 +343,7 @@ export default function RoomGate({ currentUser, onDone, onCancel }: Props) {
             {error && <p className="text-xs text-red-500">{error}</p>}
             <button
               onClick={handleCreate}
-              disabled={!roomName.trim() || !passphrase.trim() || loading}
+              disabled={!roomName.trim() || !passphrase.trim() || !nickname.trim() || loading}
               className="w-full py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 text-white font-medium text-sm transition-colors"
             >
               {loading ? '作成中…' : 'ルームを作成'}
@@ -356,7 +370,7 @@ export default function RoomGate({ currentUser, onDone, onCancel }: Props) {
             {error && <p className="text-xs text-red-500">{error}</p>}
             <button
               onClick={handleJoin}
-              disabled={!inviteCodeInput.trim() || !joinPassphrase.trim() || loading}
+              disabled={!inviteCodeInput.trim() || !joinPassphrase.trim() || !nickname.trim() || loading}
               className="w-full py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 text-white font-medium text-sm transition-colors"
             >
               {loading ? '参加中…' : '参加する'}
