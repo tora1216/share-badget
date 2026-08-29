@@ -96,7 +96,7 @@ export default function RoomGate({ currentUser, defaultNickname, onDone, onCance
       const participant = buildParticipant()
 
       const writes: Promise<unknown>[] = [
-        setDoc(metaRef, { name }),
+        setDoc(metaRef, { name, inviteCode }),
         setDoc(doc(db, 'inviteCodes', inviteCode), { groupId }),
       ]
       if (!isAdopting) {

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { signOut } from 'firebase/auth'
 import { auth } from '../../lib/firebase'
-import type { Participant } from '../types'
+import type { Participant, Entry, FixedCost } from '../types'
 import { APP_VERSION, CHANGELOG } from '../../lib/changelog'
 
 interface Props {
@@ -15,6 +15,10 @@ interface Props {
   onRenameDisplayName: (name: string) => void
   onLeaveRoom: () => void
   participants: Participant[]
+  members: string[]
+  onUpdateMembers: (members: string[]) => void
+  entries: Entry[]
+  fixedCosts: FixedCost[]
 }
 
 export default function MenuPage({
@@ -26,12 +30,17 @@ export default function MenuPage({
   onRenameDisplayName,
   onLeaveRoom,
   participants,
+  members,
+  onUpdateMembers,
+  entries,
+  fixedCosts,
 }: Props) {
   const [showPassphrase, setShowPassphrase] = useState(false)
   const [copied, setCopied] = useState<'code' | 'pass' | null>(null)
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState(displayName)
   const [changelogOpen, setChangelogOpen] = useState(true)
+  const [newMember, setNewMember] = useState('')
 
   const copyText = async (text: string, which: 'code' | 'pass') => {
     try {
@@ -48,62 +57,69 @@ export default function MenuPage({
     setEditingName(false)
   }
 
+  const addMember = () => {
+    const name = newMember.trim()
+    if (!name || members.includes(name)) return
+    onUpdateMembers([...members, name])
+    setNewMember('')
+  }
+
+  const countMemberUsage = (name: string) =>
+    entries.filter(e => e.paidBy === name || (e.warikanParticipants ?? []).includes(name)).length +
+    fixedCosts.filter(f => f.paidBy === name || (f.warikanParticipants ?? []).includes(name)).length
+
+  const deleteMember = (name: string) => {
+    const usage = countMemberUsage(name)
+    const message = usage > 0
+      ? `「${name}」は過去の${usage}件の支出・固定費に関わっています。メンバー一覧からは削除されますが、それらの記録には名前がそのまま残ります。削除しますか？`
+      : `「${name}」を削除しますか？`
+    if (!confirm(message)) return
+    onUpdateMembers(members.filter(m => m !== name))
+  }
+
   return (
     <div className="flex flex-col gap-4 px-4 pt-4 pb-4">
       {/* プロフィール */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-3">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4">
         <div className="flex items-center gap-3">
           {photoURL ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={photoURL} alt="" className="w-12 h-12 rounded-full flex-shrink-0" />
+            <img src={photoURL} alt="" className="w-10 h-10 rounded-full flex-shrink-0" />
           ) : (
-            <span className="w-12 h-12 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xl flex-shrink-0">👤</span>
+            <span className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-lg flex-shrink-0">👤</span>
           )}
-          <div className="min-w-0">
-            <p className="text-xs text-gray-400 dark:text-gray-500">プロフィール</p>
-          </div>
-        </div>
 
-        <div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">ユーザー名</p>
           {editingName ? (
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={nameDraft}
-                onChange={e => setNameDraft(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') saveNameDraft() }}
-                className="flex-1 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
-                autoFocus
-              />
-              <button
-                onClick={saveNameDraft}
-                disabled={!nameDraft.trim()}
-                className="px-4 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 text-white font-medium text-sm transition-colors"
-              >
-                保存
-              </button>
-            </div>
+            <input
+              type="text"
+              value={nameDraft}
+              onChange={e => setNameDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') saveNameDraft() }}
+              onBlur={saveNameDraft}
+              className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+              autoFocus
+            />
           ) : (
-            <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{displayName}</span>
+            <div className="flex-1 flex items-center gap-1.5 min-w-0">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{displayName}</span>
               <button
                 onClick={() => { setNameDraft(displayName); setEditingName(true) }}
-                className="text-xs text-blue-500 hover:underline"
+                className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 transition-colors"
+                aria-label="ユーザー名を編集"
               >
-                変更
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               </button>
             </div>
           )}
-        </div>
 
-        <button
-          type="button"
-          onClick={() => { if (confirm('ログアウトしますか？')) signOut(auth) }}
-          className="w-full py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 font-medium text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-        >
-          ログアウト
-        </button>
+          <button
+            type="button"
+            onClick={() => { if (confirm('ログアウトしますか？')) signOut(auth) }}
+            className="flex-shrink-0 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 font-medium text-xs hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            ログアウト
+          </button>
+        </div>
       </div>
 
       {/* ルーム情報 */}
@@ -172,6 +188,49 @@ export default function MenuPage({
           ) : (
             <p className="text-sm text-gray-400 dark:text-gray-500">まだ誰も参加していません</p>
           )}
+        </div>
+
+        <div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">メンバー（割り勘に使う名前）</p>
+          {members.length > 0 && (
+            <div className="space-y-2 mb-2">
+              {members.map(m => (
+                <div
+                  key={m}
+                  className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">👤</span>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{m}</span>
+                  </div>
+                  <button
+                    onClick={() => deleteMember(m)}
+                    className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-red-100 dark:hover:bg-red-900/50 text-gray-400 hover:text-red-500 transition-colors text-xs"
+                    aria-label={`${m}を削除`}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="名前"
+              value={newMember}
+              onChange={e => setNewMember(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') addMember() }}
+              className="flex-1 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400"
+            />
+            <button
+              onClick={addMember}
+              disabled={!newMember.trim()}
+              className="px-4 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 text-white font-medium text-sm transition-colors"
+            >
+              追加
+            </button>
+          </div>
         </div>
 
         <button

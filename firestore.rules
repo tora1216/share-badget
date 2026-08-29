@@ -27,7 +27,9 @@ service cloud.firestore {
       allow get: if request.auth != null;
       allow list: if false;
       allow create: if request.auth != null;
-      allow update, delete: if false;
+      // 招待コードの再発行時に古いコードを無効化できるよう削除を許可する
+      allow delete: if request.auth != null;
+      allow update: if false;
     }
 
     match /users/{uid} {

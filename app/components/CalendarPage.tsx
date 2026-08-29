@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { doc, setDoc, onSnapshot } from 'firebase/firestore'
+import { doc, setDoc, getDoc, deleteDoc, onSnapshot } from 'firebase/firestore'
 import { onAuthStateChanged, type User } from 'firebase/auth'
 import type { Entry, Category, CalendarEvent, FixedCost, WarikanSplitMethod, Participant } from '../types'
 import { DEFAULT_CATEGORIES, EVENT_COLORS } from '../types'
 import { splitEqual, splitByRatio } from '../../lib/warikan'
+import { getPeriodRange, isInPeriod } from '../../lib/period'
 import { db, auth } from '../../lib/firebase'
-import type { UserRooms } from '../../lib/rooms'
+import { generateInviteCode, type UserRooms } from '../../lib/rooms'
 import { getWarikanDefaults, setWarikanDefaults as persistWarikanDefaults, DEFAULT_WARIKAN_DEFAULTS, type WarikanDefaults } from '../../lib/settings'
 import ManagePage from './ManagePage'
 import ReportPage from './ReportPage'
@@ -33,6 +34,8 @@ export default function CalendarPage() {
   const [userRooms, setUserRooms] = useState<UserRooms | null>(null)
   const [userRoomsChecked, setUserRoomsChecked] = useState(false)
   const [roomName, setRoomName] = useState('')
+  const [settlementDay, setSettlementDay] = useState(1)
+  const [metaInviteCode, setMetaInviteCode] = useState('')
   const [entries, setEntries] = useState<Entry[]>([])
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES)
   const [members, setMembers] = useState<string[]>([])
@@ -74,6 +77,7 @@ export default function CalendarPage() {
   const [settingsInfoOpen, setSettingsInfoOpen] = useState(false)
   const [roomListOpen, setRoomListOpen] = useState(false)
   const [addingRoom, setAddingRoom] = useState(false)
+  const [yearMonthPickerOpen, setYearMonthPickerOpen] = useState(false)
 
   // ダブルクリック検出用
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -153,6 +157,8 @@ export default function CalendarPage() {
       }),
       onSnapshot(col('meta'), snap => {
         setRoomName((snap.data()?.name as string | undefined) ?? '')
+        setSettlementDay((snap.data()?.settlementDay as number | undefined) ?? 1)
+        setMetaInviteCode((snap.data()?.inviteCode as string | undefined) ?? '')
       }),
     ]
     return () => unsubscribers.forEach(u => u())
@@ -438,6 +444,41 @@ export default function CalendarPage() {
     writeGroupData('members', updated)
   }
 
+  const updateSettlementDay = (day: number) => {
+    if (!activeGroupId) return
+    setDoc(doc(db, 'groups', activeGroupId, 'data', 'meta'), { settlementDay: day }, { merge: true })
+      .catch(err => console.error('精算日の更新に失敗しました', err))
+  }
+
+  const renameRoom = (name: string) => {
+    if (!activeGroupId) return
+    const trimmed = name.trim()
+    if (!trimmed) return
+    setDoc(doc(db, 'groups', activeGroupId, 'data', 'meta'), { name: trimmed }, { merge: true })
+      .catch(err => console.error('ルーム名の変更に失敗しました', err))
+  }
+
+  const regenerateInviteCode = async () => {
+    if (!activeGroupId) return
+    if (!confirm('招待コードを再発行しますか？今のコードは無効になります。')) return
+    try {
+      let newCode = ''
+      for (let i = 0; i < 5; i++) {
+        const candidate = generateInviteCode()
+        const codeSnap = await getDoc(doc(db, 'inviteCodes', candidate))
+        if (!codeSnap.exists()) { newCode = candidate; break }
+      }
+      if (!newCode) throw new Error('招待コードの発行に失敗しました')
+      const oldCode = displayInviteCode
+      await setDoc(doc(db, 'inviteCodes', newCode), { groupId: activeGroupId })
+      await setDoc(doc(db, 'groups', activeGroupId, 'data', 'meta'), { inviteCode: newCode }, { merge: true })
+      if (oldCode) await deleteDoc(doc(db, 'inviteCodes', oldCode)).catch(() => {})
+    } catch (err) {
+      console.error('招待コードの再発行に失敗しました', err)
+      alert('招待コードの再発行に失敗しました')
+    }
+  }
+
   const updateFixedCosts = (updated: FixedCost[]) => {
     writeGroupData('fixedCosts', updated)
   }
@@ -507,8 +548,10 @@ export default function CalendarPage() {
     return lanes
   }
 
+  // 「今月の支出」は精算日（締め日）を基準にした期間で集計する（精算日=1ならカレンダー月と同じ）
+  const currentPeriod = getPeriodRange(currentYear, currentMonth, settlementDay)
   const totalExpense = calendarEntries
-    .filter(e => e.date.startsWith(monthPrefix) && e.type === 'expense')
+    .filter(e => isInPeriod(e.date, currentPeriod) && e.type === 'expense')
     .reduce((sum, e) => sum + e.amount, 0)
 
   const unsettledTotal = entries
@@ -527,7 +570,7 @@ export default function CalendarPage() {
     .sort((a, b) => b.localeCompare(a))
 
   const navTitle: Record<NavTab, string> = {
-    calendar: 'カレンダー',
+    calendar: '支出カレンダー',
     manage: '固定費',
     report: 'レポート',
     warikan: '精算',
@@ -535,6 +578,7 @@ export default function CalendarPage() {
   }
 
   const activeRoom = userRooms?.rooms.find(r => r.groupId === activeGroupId)
+  const displayInviteCode = metaInviteCode || activeRoom?.inviteCode || ''
 
   if (!authChecked) return null
   if (!authUser) return <LoginPage />
@@ -597,7 +641,12 @@ export default function CalendarPage() {
         />
       )}
       {activeNav === 'report' && (
-        <ReportPage entries={entries} categories={categories} />
+        <ReportPage
+          entries={entries}
+          categories={categories}
+          onUpdateCategories={updateCategories}
+          settlementDay={settlementDay}
+        />
       )}
       {activeNav === 'warikan' && (
         <WarikanListPage
@@ -611,13 +660,17 @@ export default function CalendarPage() {
       {activeNav === 'menu' && (
         <MenuPage
           roomName={roomName}
-          roomInviteCode={activeRoom?.inviteCode ?? ''}
+          roomInviteCode={displayInviteCode}
           roomPassphrase={activeRoom?.passphrase ?? ''}
           displayName={myDisplayName}
           photoURL={authUser.photoURL ?? undefined}
           onRenameDisplayName={renameDisplayName}
           onLeaveRoom={leaveRoom}
           participants={participants}
+          members={members}
+          onUpdateMembers={updateMembers}
+          entries={entries}
+          fixedCosts={fixedCosts}
         />
       )}
 
@@ -630,25 +683,41 @@ export default function CalendarPage() {
         >
           ‹
         </button>
-        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/70 rounded-2xl px-2 py-1">
-          <select
-            value={currentYear}
-            onChange={e => setCurrentYear(Number(e.target.value))}
-            className="bg-transparent text-base font-bold text-gray-800 dark:text-gray-100 focus:outline-none appearance-none text-right pl-1"
+        <div className="relative">
+          <button
+            onClick={() => setYearMonthPickerOpen(o => !o)}
+            className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/70 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-2xl px-3 py-1 text-base font-bold text-gray-800 dark:text-gray-100 transition-colors"
           >
-            {yearOptions.map(y => (
-              <option key={y} value={y}>{y}年</option>
-            ))}
-          </select>
-          <select
-            value={currentMonth}
-            onChange={e => setCurrentMonth(Number(e.target.value))}
-            className="bg-transparent text-base font-bold text-gray-800 dark:text-gray-100 focus:outline-none appearance-none pr-1"
-          >
-            {Array.from({ length: 12 }, (_, i) => i).map(m => (
-              <option key={m} value={m}>{m + 1}月</option>
-            ))}
-          </select>
+            {currentYear}年{currentMonth + 1}月
+          </button>
+          {yearMonthPickerOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setYearMonthPickerOpen(false)}
+              />
+              <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-lg px-3 py-2">
+                <select
+                  value={currentYear}
+                  onChange={e => setCurrentYear(Number(e.target.value))}
+                  className="bg-transparent text-base font-bold text-gray-800 dark:text-gray-100 focus:outline-none"
+                >
+                  {yearOptions.map(y => (
+                    <option key={y} value={y}>{y}年</option>
+                  ))}
+                </select>
+                <select
+                  value={currentMonth}
+                  onChange={e => setCurrentMonth(Number(e.target.value))}
+                  className="bg-transparent text-base font-bold text-gray-800 dark:text-gray-100 focus:outline-none"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i).map(m => (
+                    <option key={m} value={m}>{m + 1}月</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
         </div>
         <button
           onClick={nextMonth}
@@ -692,7 +761,7 @@ export default function CalendarPage() {
               <div className="grid grid-cols-7">
                 {week.map((cell, ci) => {
                   if (!cell.dateStr || cell.day === null) {
-                    return <div key={`empty-${wi}-${ci}`} className="h-6" />
+                    return <div key={`empty-${wi}-${ci}`} className="h-5" />
                   }
                   const isToday = cell.dateStr === todayStr
                   const isFuture = cell.dateStr > todayStr
@@ -700,7 +769,7 @@ export default function CalendarPage() {
                     <div
                       key={cell.dateStr}
                       onClick={() => handleDayClick(cell.dateStr!)}
-                      className={`px-1.5 pt-1 pb-0.5 text-left cursor-pointer ${isFuture ? 'opacity-40' : ''}`}
+                      className={`px-1 pt-0.5 text-left cursor-pointer ${isFuture ? 'opacity-40' : ''}`}
                     >
                       <span
                         className={`inline-flex items-center justify-center w-5 h-5 text-xs font-semibold leading-none rounded-full ${
@@ -717,7 +786,7 @@ export default function CalendarPage() {
               </div>
 
               {/* 予定の帯（一番上）：予定が無い週も高さを揃えるため常に確保 */}
-              <div className="px-1 mb-0.5 h-5">
+              <div className="px-1 mb-0.5 h-4">
                 {lanes.map((lane, li) => (
                   <div key={li} className="grid grid-cols-7 gap-x-0.5">
                     {lane.map(seg => (
@@ -729,7 +798,7 @@ export default function CalendarPage() {
                           gridColumnStart: seg.colStart + 1,
                           gridColumnEnd: seg.colEnd + 2,
                         }}
-                        className={`text-white text-[10px] font-medium px-1.5 py-0.5 truncate leading-tight cursor-pointer ${
+                        className={`text-white text-[10px] font-medium px-1.5 truncate leading-4 cursor-pointer ${
                           seg.isStart ? 'rounded-l-md' : ''
                         } ${seg.isEnd ? 'rounded-r-md' : ''}`}
                       >
@@ -744,7 +813,7 @@ export default function CalendarPage() {
               <div className="grid grid-cols-7">
                 {week.map((cell, ci) => {
                   if (!cell.dateStr || cell.day === null) {
-                    return <div key={`empty-amt-${wi}-${ci}`} className="h-3.5" />
+                    return <div key={`empty-amt-${wi}-${ci}`} className="h-3" />
                   }
                   const dayEntries = getEntriesForDay(cell.day)
                   const isFuture = cell.dateStr > todayStr
@@ -753,10 +822,10 @@ export default function CalendarPage() {
                     <div
                       key={`${cell.dateStr}-amt`}
                       onClick={() => handleDayClick(cell.dateStr!)}
-                      className={`px-1.5 h-3.5 cursor-pointer ${isFuture ? 'opacity-40' : ''}`}
+                      className={`px-1.5 h-3 cursor-pointer ${isFuture ? 'opacity-40' : ''}`}
                     >
                       {dayExpenseTotal > 0 && (
-                        <div className="text-[10px] text-orange-500 leading-tight text-right">
+                        <div className="text-[10px] text-orange-500 leading-none text-right">
                           {dayExpenseTotal.toLocaleString()}
                         </div>
                       )}
@@ -1253,7 +1322,7 @@ export default function CalendarPage() {
         {([
           {
             key: 'calendar' as NavTab,
-            label: 'カレンダー',
+            label: '支出カレンダー',
             icon: (
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -1335,10 +1404,12 @@ export default function CalendarPage() {
         onUpdateWarikanDefaults={saveWarikanDefaults}
         categories={categories}
         onUpdateCategories={updateCategories}
-        members={members}
-        onUpdateMembers={updateMembers}
-        entries={entries}
-        fixedCosts={fixedCosts}
+        settlementDay={settlementDay}
+        onUpdateSettlementDay={updateSettlementDay}
+        roomName={roomName}
+        onRenameRoom={renameRoom}
+        inviteCode={displayInviteCode}
+        onRegenerateInviteCode={regenerateInviteCode}
       />
       <RoomListModal
         open={roomListOpen}

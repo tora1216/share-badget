@@ -1,10 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import type { Category, Entry, FixedCost } from '../types'
+import type { Category } from '../types'
 import type { WarikanDefaults } from '../../lib/settings'
-
-type CategoryTab = 'expense' | 'members'
 
 interface Props {
   open: boolean
@@ -15,10 +13,12 @@ interface Props {
   onUpdateWarikanDefaults: (defaults: WarikanDefaults) => void
   categories: Category[]
   onUpdateCategories: (categories: Category[]) => void
-  members: string[]
-  onUpdateMembers: (members: string[]) => void
-  entries: Entry[]
-  fixedCosts: FixedCost[]
+  settlementDay: number
+  onUpdateSettlementDay: (day: number) => void
+  roomName: string
+  onRenameRoom: (name: string) => void
+  inviteCode: string
+  onRegenerateInviteCode: () => void
 }
 
 export default function SettingsInfoModal({
@@ -30,23 +30,31 @@ export default function SettingsInfoModal({
   onUpdateWarikanDefaults,
   categories,
   onUpdateCategories,
-  members,
-  onUpdateMembers,
-  entries,
-  fixedCosts,
+  settlementDay,
+  onUpdateSettlementDay,
+  roomName,
+  onRenameRoom,
+  inviteCode,
+  onRegenerateInviteCode,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<CategoryTab>('expense')
   const [newEmoji, setNewEmoji] = useState('')
   const [newName, setNewName] = useState('')
-  const [newMember, setNewMember] = useState('')
+  const [appOpen, setAppOpen] = useState(true)
+  const [roomOpen, setRoomOpen] = useState(true)
+  const [roomNameDraft, setRoomNameDraft] = useState(roomName)
+  const [editingRoomName, setEditingRoomName] = useState(false)
+  const [copiedInvite, setCopiedInvite] = useState(false)
+  const [walletOpen, setWalletOpen] = useState(true)
+  const [categoryOpen, setCategoryOpen] = useState(true)
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+  const [editEmoji, setEditEmoji] = useState('')
+  const [editName, setEditName] = useState('')
 
   if (!open) return null
 
-  const filtered = categories.filter(c => c.type === activeTab)
-
   const addCategory = () => {
     const name = newName.trim()
-    if (!name || activeTab === 'members') return
+    if (!name) return
     const newCategory: Category = {
       id: Date.now().toString(),
       name,
@@ -63,36 +71,35 @@ export default function SettingsInfoModal({
     onUpdateCategories(categories.filter(c => c.id !== id))
   }
 
-  const updateCategoryBudget = (id: string, value: string) => {
-    const parsed = Number(value)
-    const budget = value.trim() !== '' && parsed > 0 ? parsed : undefined
-    onUpdateCategories(categories.map(c => (c.id === id ? { ...c, monthlyBudget: budget } : c)))
+  const startEditCategory = (c: Category) => {
+    setEditingCategoryId(c.id)
+    setEditEmoji(c.emoji)
+    setEditName(c.name)
   }
 
-  const addMember = () => {
-    const name = newMember.trim()
-    if (!name || members.includes(name)) return
-    onUpdateMembers([...members, name])
-    setNewMember('')
+  const saveEditCategory = () => {
+    const name = editName.trim()
+    if (!editingCategoryId || !name) return
+    onUpdateCategories(categories.map(c => (c.id === editingCategoryId ? { ...c, name, emoji: editEmoji.trim() || '📌' } : c)))
+    setEditingCategoryId(null)
   }
 
-  const countMemberUsage = (name: string) =>
-    entries.filter(e => e.paidBy === name || (e.warikanParticipants ?? []).includes(name)).length +
-    fixedCosts.filter(f => f.paidBy === name || (f.warikanParticipants ?? []).includes(name)).length
-
-  const deleteMember = (name: string) => {
-    const usage = countMemberUsage(name)
-    const message = usage > 0
-      ? `「${name}」は過去の${usage}件の支出・固定費に関わっています。メンバー一覧からは削除されますが、それらの記録には名前がそのまま残ります。削除しますか？`
-      : `「${name}」を削除しますか？`
-    if (!confirm(message)) return
-    onUpdateMembers(members.filter(m => m !== name))
+  const saveRoomName = () => {
+    const trimmed = roomNameDraft.trim()
+    if (!trimmed) return
+    onRenameRoom(trimmed)
+    setEditingRoomName(false)
   }
 
-  const categoryTabs: { key: CategoryTab; label: string; color: string }[] = [
-    { key: 'expense', label: 'カテゴリ', color: 'text-red-500' },
-    { key: 'members', label: 'メンバー', color: 'text-blue-500' },
-  ]
+  const copyInviteCode = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteCode)
+      setCopiedInvite(true)
+      setTimeout(() => setCopiedInvite(false), 1500)
+    } catch {
+      // クリップボードが使えない環境では何もしない
+    }
+  }
 
   return (
     <div
@@ -114,7 +121,7 @@ export default function SettingsInfoModal({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-10 space-y-5">
+        <div className="flex-1 overflow-y-auto px-6 pb-10 space-y-6">
           {/* ホーム画面に追加 */}
           <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-4 space-y-3">
             <div className="flex items-center gap-2">
@@ -141,168 +148,230 @@ export default function SettingsInfoModal({
             </ol>
           </div>
 
-          {/* ダークモード */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm px-4 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-xl">{darkMode ? '🌙' : '☀️'}</span>
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                {darkMode ? 'ダークモード' : 'ライトモード'}
-              </span>
-            </div>
+          {/* アプリ設定 */}
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
             <button
               type="button"
-              onClick={onToggleDarkMode}
-              className={`relative w-11 h-6 rounded-full transition-colors ${darkMode ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'}`}
-              aria-label="ダークモード切替"
+              onClick={() => setAppOpen(o => !o)}
+              className="w-full flex items-center justify-between p-4"
             >
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${darkMode ? 'translate-x-5' : 'translate-x-0'}`} />
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">アプリ設定</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={`text-gray-400 dark:text-gray-500 transition-transform ${appOpen ? 'rotate-180' : ''}`}
+              >
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
             </button>
+            {appOpen && (
+              <div className="px-4 pb-4 flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                  {darkMode ? 'ダークモード' : 'ライトモード'}
+                </span>
+                <button
+                  type="button"
+                  onClick={onToggleDarkMode}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${darkMode ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'}`}
+                  aria-label="ダークモード切替"
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${darkMode ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* 家計簿設定（この端末だけのローカル設定） */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-4">
-            <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">家計簿設定</p>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">この端末だけのローカル設定です。他のメンバーには影響しません</p>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-600 dark:text-gray-300">追加時に割り勘をデフォルトでON</label>
-              <button
-                type="button"
-                onClick={() => onUpdateWarikanDefaults({ ...warikanDefaults, defaultOn: !warikanDefaults.defaultOn })}
-                className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
-                  warikanDefaults.defaultOn ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'
-                }`}
-                aria-label="割り勘デフォルトON切替"
+          {/* ルーム設定 */}
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setRoomOpen(o => !o)}
+              className="w-full flex items-center justify-between p-4"
+            >
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">ルーム設定</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={`text-gray-400 dark:text-gray-500 transition-transform ${roomOpen ? 'rotate-180' : ''}`}
               >
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
-                  warikanDefaults.defaultOn ? 'translate-x-5' : 'translate-x-0'
-                }`} />
-              </button>
-            </div>
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            {roomOpen && (
+              <div className="px-4 pb-4 space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">ルーム名</p>
+                  {editingRoomName ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={roomNameDraft}
+                        onChange={e => setRoomNameDraft(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveRoomName() }}
+                        autoFocus
+                        className="flex-1 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+                      />
+                      <button
+                        onClick={saveRoomName}
+                        disabled={!roomNameDraft.trim()}
+                        className="px-4 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 text-white font-medium text-sm transition-colors"
+                      >
+                        保存
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{roomName}</span>
+                      <button
+                        onClick={() => { setRoomNameDraft(roomName); setEditingRoomName(true) }}
+                        className="text-xs text-blue-500 hover:underline flex-shrink-0"
+                      >
+                        変更
+                      </button>
+                    </div>
+                  )}
+                </div>
 
-            <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">デフォルトの割り勘方法</p>
-              <div className="flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1">
-                {([
-                  { key: 'equal', label: '均等' },
-                  { key: 'ratio', label: '比率' },
-                  { key: 'amount', label: '金額' },
-                ] as const).map(opt => (
+                <div>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">招待コード</p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 font-mono tracking-widest truncate">
+                      {inviteCode}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={copyInviteCode}
+                      className="px-3 h-10 flex-shrink-0 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-medium text-xs transition-colors"
+                    >
+                      {copiedInvite ? 'コピー済み' : 'コピー'}
+                    </button>
+                  </div>
                   <button
-                    key={opt.key}
                     type="button"
-                    onClick={() => onUpdateWarikanDefaults({ ...warikanDefaults, splitMethod: opt.key })}
-                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                      warikanDefaults.splitMethod === opt.key
-                        ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 shadow-sm'
-                        : 'text-gray-500 dark:text-gray-400'
-                    }`}
+                    onClick={onRegenerateInviteCode}
+                    className="mt-2 text-xs text-red-500 hover:underline"
                   >
-                    {opt.label}
+                    招待コードを再発行する
                   </button>
-                ))}
+                </div>
+
+                <div className="pt-3 border-t border-gray-100 dark:border-gray-800">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-300">精算日を設定</p>
+                      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+                        {settlementDay > 1
+                          ? `毎月${settlementDay}日を含めて締め、翌日から次の期間として集計します`
+                          : 'OFFの場合は毎月1日〜末日で集計します（カレンダー通りの月区切り）'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onUpdateSettlementDay(settlementDay > 1 ? 1 : 25)}
+                      className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                        settlementDay > 1 ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'
+                      }`}
+                      aria-label="精算日設定の切替"
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
+                        settlementDay > 1 ? 'translate-x-5' : 'translate-x-0'
+                      }`} />
+                    </button>
+                  </div>
+                  {settlementDay > 1 && (
+                    <select
+                      value={settlementDay}
+                      onChange={e => onUpdateSettlementDay(Number(e.target.value))}
+                      className="w-full mt-3 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+                    >
+                      {Array.from({ length: 27 }, (_, i) => i + 2).map(d => (
+                        <option key={d} value={d}>{d}日締め</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* カテゴリ設定 */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
-            <div className="px-4 pt-4">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">カテゴリ設定</p>
-              <div className="flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1">
-                {categoryTabs.map(t => (
-                  <button
-                    key={t.key}
-                    onClick={() => setActiveTab(t.key)}
-                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                      activeTab === t.key
-                        ? `bg-white dark:bg-gray-700 ${t.color} shadow-sm`
-                        : 'text-gray-500 dark:text-gray-400'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {activeTab === 'members' ? (
-              <div className="p-4 space-y-3">
-                {members.length === 0 && (
-                  <p className="text-sm text-gray-400 text-center py-4">メンバーがいません</p>
-                )}
-                <div className="space-y-2">
-                  {members.map(m => (
-                    <div
-                      key={m}
-                      className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">👤</span>
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{m}</span>
-                      </div>
-                      <button
-                        onClick={() => deleteMember(m)}
-                        className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-red-100 dark:hover:bg-red-900/50 text-gray-400 hover:text-red-500 transition-colors text-xs"
-                        aria-label={`${m}を削除`}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="名前"
-                    value={newMember}
-                    onChange={e => setNewMember(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') addMember() }}
-                    className="flex-1 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400"
-                  />
-                  <button
-                    onClick={addMember}
-                    disabled={!newMember.trim()}
-                    className="px-4 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 text-white font-medium text-sm transition-colors"
-                  >
-                    追加
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="p-4 space-y-3">
-                {filtered.length === 0 && (
+            <button
+              type="button"
+              onClick={() => setCategoryOpen(o => !o)}
+              className="w-full flex items-center justify-between p-4"
+            >
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">カテゴリ設定</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={`text-gray-400 dark:text-gray-500 transition-transform ${categoryOpen ? 'rotate-180' : ''}`}
+              >
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            {categoryOpen && (
+              <div className="px-4 pb-4 space-y-3">
+                {categories.length === 0 && (
                   <p className="text-sm text-gray-400 text-center py-4">カテゴリがありません</p>
                 )}
-                <div className="grid grid-cols-3 gap-2">
-                  {filtered.map(c => (
+                <div className="space-y-2">
+                  {categories.map(c => (
                     <div
                       key={c.id}
-                      className="relative flex flex-col items-center gap-1 py-3 px-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
                     >
-                      <button
-                        onClick={() => deleteCategory(c.id)}
-                        className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-red-100 dark:hover:bg-red-900/50 text-gray-400 hover:text-red-500 transition-colors text-xs"
-                        aria-label={`${c.name}を削除`}
-                      >
-                        ✕
-                      </button>
-                      <span className="text-2xl leading-none">{c.emoji}</span>
-                      <span className="text-xs font-medium text-gray-700 dark:text-gray-300 text-center leading-tight">
-                        {c.name}
-                      </span>
-                      {activeTab === 'expense' && (
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          placeholder="予算（円）"
-                          defaultValue={c.monthlyBudget ?? ''}
-                          onBlur={e => updateCategoryBudget(c.id, e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                          className="w-full mt-0.5 border border-gray-200 dark:border-gray-700 rounded-lg px-1 py-1 text-[11px] text-center focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400"
-                        />
+                      {editingCategoryId === c.id ? (
+                        <>
+                          <input
+                            type="text"
+                            value={editEmoji}
+                            onChange={e => setEditEmoji(e.target.value)}
+                            maxLength={2}
+                            className="w-10 flex-shrink-0 border border-gray-200 dark:border-gray-700 rounded-lg px-1 py-1 text-center text-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100"
+                          />
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') saveEditCategory() }}
+                            autoFocus
+                            className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100"
+                          />
+                          <button
+                            onClick={saveEditCategory}
+                            disabled={!editName.trim()}
+                            className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 dark:disabled:bg-gray-700 text-white transition-colors text-xs"
+                            aria-label="保存"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={() => setEditingCategoryId(null)}
+                            className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 transition-colors text-xs"
+                            aria-label="キャンセル"
+                          >
+                            ✕
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-xl flex-shrink-0">{c.emoji}</span>
+                          <span className="flex-1 min-w-0 text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
+                            {c.name}
+                          </span>
+                          <button
+                            onClick={() => startEditCategory(c)}
+                            className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/40 text-gray-400 hover:text-blue-500 transition-colors"
+                            aria-label={`${c.name}を編集`}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          </button>
+                          <button
+                            onClick={() => deleteCategory(c.id)}
+                            className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full hover:bg-red-50 dark:hover:bg-red-900/40 text-gray-400 hover:text-red-500 transition-colors"
+                            aria-label={`${c.name}を削除`}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                          </button>
+                        </>
                       )}
                     </div>
                   ))}
@@ -331,6 +400,68 @@ export default function SettingsInfoModal({
                   >
                     追加
                   </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 家計簿設定（この端末だけのローカル設定） */}
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setWalletOpen(o => !o)}
+              className="w-full flex items-center justify-between p-4"
+            >
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">家計簿設定</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={`text-gray-400 dark:text-gray-500 transition-transform ${walletOpen ? 'rotate-180' : ''}`}
+              >
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            {walletOpen && (
+              <div className="px-4 pb-4 space-y-4">
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">この端末だけのローカル設定です。他のメンバーには影響しません</p>
+
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-600 dark:text-gray-300">追加時に割り勘をデフォルトでON</label>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateWarikanDefaults({ ...warikanDefaults, defaultOn: !warikanDefaults.defaultOn })}
+                    className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                      warikanDefaults.defaultOn ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'
+                    }`}
+                    aria-label="割り勘デフォルトON切替"
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
+                      warikanDefaults.defaultOn ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">デフォルトの割り勘方法</p>
+                  <div className="flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1">
+                    {([
+                      { key: 'equal', label: '均等' },
+                      { key: 'ratio', label: '比率' },
+                      { key: 'amount', label: '金額' },
+                    ] as const).map(opt => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => onUpdateWarikanDefaults({ ...warikanDefaults, splitMethod: opt.key })}
+                        className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                          warikanDefaults.splitMethod === opt.key
+                            ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 shadow-sm'
+                            : 'text-gray-500 dark:text-gray-400'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

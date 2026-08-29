@@ -2,22 +2,23 @@
 
 import { useState } from 'react'
 import type { Entry, Category } from '../types'
+import { getPeriodRange, isInPeriod } from '../../lib/period'
 
 interface Props {
   entries: Entry[]
   categories: Category[]
+  onUpdateCategories: (categories: Category[]) => void
+  settlementDay: number
 }
 
-const DAYS_OF_WEEK = ['日', '月', '火', '水', '木', '金', '土']
-
-export default function ReportPage({ entries, categories }: Props) {
+export default function ReportPage({ entries, categories, onUpdateCategories, settlementDay }: Props) {
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
 
-  const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`
+  const period = getPeriodRange(year, month, settlementDay)
 
-  const monthEntries = entries.filter(e => e.date.startsWith(monthPrefix))
+  const monthEntries = entries.filter(e => isInPeriod(e.date, period))
   const totalExpense = monthEntries.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0)
 
   const prevMonth = () => {
@@ -29,6 +30,12 @@ export default function ReportPage({ entries, categories }: Props) {
     else setMonth(m => m + 1)
   }
 
+  const updateCategoryBudget = (id: string, value: string) => {
+    const parsed = Number(value)
+    const budget = value.trim() !== '' && parsed > 0 ? parsed : undefined
+    onUpdateCategories(categories.map(c => (c.id === id ? { ...c, monthlyBudget: budget } : c)))
+  }
+
   // カテゴリ別支出
   const expenseByCategory = categories
     .filter(c => c.type === 'expense')
@@ -36,7 +43,6 @@ export default function ReportPage({ entries, categories }: Props) {
       ...c,
       total: monthEntries.filter(e => e.type === 'expense' && e.categoryId === c.id).reduce((s, e) => s + e.amount, 0),
     }))
-    .filter(c => c.total > 0 || c.monthlyBudget)
     .sort((a, b) => b.total - a.total)
 
   const maxExpense = Math.max(...expenseByCategory.map(c => c.total), 1)
@@ -46,8 +52,8 @@ export default function ReportPage({ entries, categories }: Props) {
     let m = month - (5 - i)
     let y = year
     if (m < 0) { m += 12; y -= 1 }
-    const prefix = `${y}-${String(m + 1).padStart(2, '0')}`
-    const monthData = entries.filter(e => e.date.startsWith(prefix))
+    const p = getPeriodRange(y, m, settlementDay)
+    const monthData = entries.filter(e => isInPeriod(e.date, p))
     return {
       label: `${m + 1}月`,
       expense: monthData.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0),
@@ -65,7 +71,12 @@ export default function ReportPage({ entries, categories }: Props) {
         >
           ‹
         </button>
-        <span className="font-semibold text-gray-800 dark:text-gray-100">{year}年{month + 1}月</span>
+        <div className="text-center">
+          <span className="font-semibold text-gray-800 dark:text-gray-100">{year}年{month + 1}月</span>
+          {settlementDay > 1 && (
+            <p className="text-[10px] text-gray-400 dark:text-gray-500">{period.start.replaceAll('-', '/')} 〜 {period.end.replaceAll('-', '/')}</p>
+          )}
+        </div>
         <button
           onClick={nextMonth}
           className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-2xl text-gray-600 dark:text-gray-300"
@@ -102,11 +113,11 @@ export default function ReportPage({ entries, categories }: Props) {
         </div>
       </div>
 
-      {/* 支出カテゴリ内訳 */}
+      {/* 支出カテゴリ内訳・予算設定 */}
       {expenseByCategory.length > 0 && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">支出カテゴリ内訳</p>
-          <div className="space-y-2.5">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">支出カテゴリ内訳・予算</p>
+          <div className="space-y-3">
             {expenseByCategory.map(c => {
               const overBudget = c.monthlyBudget != null && c.total > c.monthlyBudget
               const barWidth = c.monthlyBudget
@@ -114,16 +125,13 @@ export default function ReportPage({ entries, categories }: Props) {
                 : (c.total / maxExpense) * 100
               return (
                 <div key={c.id}>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-base leading-none">{c.emoji}</span>
-                      <span className="text-xs text-gray-600 dark:text-gray-300">{c.name}</span>
+                  <div className="flex items-center justify-between mb-1 gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-base leading-none flex-shrink-0">{c.emoji}</span>
+                      <span className="text-xs text-gray-600 dark:text-gray-300 truncate">{c.name}</span>
                     </div>
-                    <span className={`text-xs font-semibold ${overBudget ? 'text-red-600 dark:text-red-400' : 'text-red-500'}`}>
+                    <span className={`text-xs font-semibold flex-shrink-0 ${overBudget ? 'text-red-600 dark:text-red-400' : 'text-red-500'}`}>
                       ¥{c.total.toLocaleString()}
-                      {c.monthlyBudget != null && (
-                        <span className="text-gray-400 dark:text-gray-500 font-normal"> / ¥{c.monthlyBudget.toLocaleString()}</span>
-                      )}
                     </span>
                   </div>
                   <div className="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
@@ -132,9 +140,24 @@ export default function ReportPage({ entries, categories }: Props) {
                       style={{ width: `${barWidth}%` }}
                     />
                   </div>
-                  {overBudget && (
-                    <p className="text-[10px] text-red-500 mt-0.5">予算を¥{(c.total - c.monthlyBudget!).toLocaleString()}オーバー</p>
-                  )}
+                  <div className="flex items-center justify-between mt-1">
+                    {overBudget ? (
+                      <p className="text-[10px] text-red-500">予算を¥{(c.total - c.monthlyBudget!).toLocaleString()}オーバー</p>
+                    ) : <span />}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <span className="text-[10px] text-gray-400 dark:text-gray-500">予算</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="未設定"
+                        defaultValue={c.monthlyBudget ?? ''}
+                        onBlur={e => updateCategoryBudget(c.id, e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                        className="w-24 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] text-right focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 placeholder-gray-400"
+                      />
+                      <span className="text-[10px] text-gray-400 dark:text-gray-500">円</span>
+                    </div>
+                  </div>
                 </div>
               )
             })}
