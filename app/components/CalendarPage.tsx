@@ -623,14 +623,14 @@ export default function CalendarPage() {
 
       {activeNav === 'calendar' && <>
       {/* Month navigation */}
-      <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-black border-b border-gray-100 dark:border-gray-800">
+      <div className="flex items-center justify-between px-4 py-1.5 bg-white dark:bg-black border-b border-gray-100 dark:border-gray-800">
         <button
           onClick={prevMonth}
-          className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-2xl text-gray-600 dark:text-gray-300"
+          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-2xl text-gray-600 dark:text-gray-300"
         >
           ‹
         </button>
-        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/70 rounded-2xl px-2 py-1.5">
+        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/70 rounded-2xl px-2 py-1">
           <select
             value={currentYear}
             onChange={e => setCurrentYear(Number(e.target.value))}
@@ -652,7 +652,7 @@ export default function CalendarPage() {
         </div>
         <button
           onClick={nextMonth}
-          className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-2xl text-gray-600 dark:text-gray-300"
+          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-2xl text-gray-600 dark:text-gray-300"
         >
           ›
         </button>
@@ -665,7 +665,7 @@ export default function CalendarPage() {
           {DAYS_OF_WEEK.map((day, i) => (
             <div
               key={day}
-              className={`text-center text-xs font-medium py-2 ${
+              className={`text-center text-xs font-medium py-1 ${
                 i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'
               }`}
             >
@@ -700,7 +700,7 @@ export default function CalendarPage() {
                     <div
                       key={cell.dateStr}
                       onClick={() => handleDayClick(cell.dateStr!)}
-                      className={`px-1.5 pt-1 pb-0.5 text-center cursor-pointer ${isFuture ? 'opacity-40' : ''}`}
+                      className={`px-1.5 pt-1 pb-0.5 text-left cursor-pointer ${isFuture ? 'opacity-40' : ''}`}
                     >
                       <span
                         className={`inline-flex items-center justify-center w-5 h-5 text-xs font-semibold leading-none rounded-full ${
@@ -716,37 +716,35 @@ export default function CalendarPage() {
                 })}
               </div>
 
-              {/* 予定の帯（一番上） */}
-              {lanes.length > 0 && (
-                <div className="px-1 space-y-0.5 mb-0.5">
-                  {lanes.map((lane, li) => (
-                    <div key={li} className="grid grid-cols-7 gap-x-0.5">
-                      {lane.map(seg => (
-                        <div
-                          key={seg.event.id}
-                          onClick={() => openEditEvent(seg.event)}
-                          style={{
-                            backgroundColor: seg.event.color,
-                            gridColumnStart: seg.colStart + 1,
-                            gridColumnEnd: seg.colEnd + 2,
-                          }}
-                          className={`text-white text-[10px] font-medium px-1.5 py-0.5 truncate leading-tight cursor-pointer ${
-                            seg.isStart ? 'rounded-l-md' : ''
-                          } ${seg.isEnd ? 'rounded-r-md' : ''}`}
-                        >
-                          {seg.event.title}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* 予定の帯（一番上）：予定が無い週も高さを揃えるため常に確保 */}
+              <div className="px-1 mb-0.5 h-5">
+                {lanes.map((lane, li) => (
+                  <div key={li} className="grid grid-cols-7 gap-x-0.5">
+                    {lane.map(seg => (
+                      <div
+                        key={seg.event.id}
+                        onClick={() => openEditEvent(seg.event)}
+                        style={{
+                          backgroundColor: seg.event.color,
+                          gridColumnStart: seg.colStart + 1,
+                          gridColumnEnd: seg.colEnd + 2,
+                        }}
+                        className={`text-white text-[10px] font-medium px-1.5 py-0.5 truncate leading-tight cursor-pointer ${
+                          seg.isStart ? 'rounded-l-md' : ''
+                        } ${seg.isEnd ? 'rounded-r-md' : ''}`}
+                      >
+                        {seg.event.title}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
 
-              {/* 金額 */}
+              {/* 金額：支出が無い日も高さを揃えるため常に確保 */}
               <div className="grid grid-cols-7">
                 {week.map((cell, ci) => {
                   if (!cell.dateStr || cell.day === null) {
-                    return <div key={`empty-amt-${wi}-${ci}`} />
+                    return <div key={`empty-amt-${wi}-${ci}`} className="h-3.5" />
                   }
                   const dayEntries = getEntriesForDay(cell.day)
                   const isFuture = cell.dateStr > todayStr
@@ -755,7 +753,7 @@ export default function CalendarPage() {
                     <div
                       key={`${cell.dateStr}-amt`}
                       onClick={() => handleDayClick(cell.dateStr!)}
-                      className={`px-1.5 cursor-pointer ${isFuture ? 'opacity-40' : ''}`}
+                      className={`px-1.5 h-3.5 cursor-pointer ${isFuture ? 'opacity-40' : ''}`}
                     >
                       {dayExpenseTotal > 0 && (
                         <div className="text-[10px] text-orange-500 leading-tight text-right">
