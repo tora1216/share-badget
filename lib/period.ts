@@ -28,3 +28,16 @@ export function getPeriodRange(year: number, month: number, settlementDay: numbe
 export function isInPeriod(dateStr: string, range: PeriodRange): boolean {
   return dateStr >= range.start && dateStr <= range.end
 }
+
+// 日付がどの「年月」の集計期間に属するかを "YYYY-MM" 形式で返す（getPeriodRange の逆引き）
+export function getPeriodKey(dateStr: string, settlementDay: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  if (settlementDay <= 1 || d <= settlementDay) {
+    return `${y}-${pad(m)}`
+  }
+  let ny = y
+  let nm = m + 1
+  if (nm > 12) { nm = 1; ny += 1 }
+  return `${ny}-${pad(nm)}`
+}

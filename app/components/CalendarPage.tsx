@@ -422,8 +422,12 @@ export default function CalendarPage() {
     writeGroupData('entries', updated)
   }
 
-  const settleAllUnsettled = () => {
-    const updated = entries.map(e => (e.warikan && !e.warikanSettled ? { ...e, warikanSettled: true } : e))
+  const settlePeriod = (start: string, end: string) => {
+    const updated = entries.map(e =>
+      e.warikan && !e.warikanSettled && e.date >= start && e.date <= end
+        ? { ...e, warikanSettled: true }
+        : e
+    )
     writeGroupData('entries', updated)
   }
 
@@ -652,8 +656,9 @@ export default function CalendarPage() {
         <WarikanListPage
           entries={entries}
           categories={categories}
+          settlementDay={settlementDay}
           onToggleSettled={toggleEntrySettled}
-          onSettleAll={settleAllUnsettled}
+          onSettlePeriod={settlePeriod}
           onOpenEntry={openEditEntry}
         />
       )}
