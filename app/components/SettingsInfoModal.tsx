@@ -44,6 +44,7 @@ export default function SettingsInfoModal({
   const [roomNameDraft, setRoomNameDraft] = useState(roomName)
   const [editingRoomName, setEditingRoomName] = useState(false)
   const [copiedInvite, setCopiedInvite] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
   const [walletOpen, setWalletOpen] = useState(true)
   const [categoryOpen, setCategoryOpen] = useState(true)
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
@@ -101,6 +102,18 @@ export default function SettingsInfoModal({
     }
   }
 
+  const shareUrl = typeof window !== 'undefined' ? window.location.origin : ''
+
+  const copyShareLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopiedLink(true)
+      setTimeout(() => setCopiedLink(false), 1500)
+    } catch {
+      // クリップボードが使えない環境では何もしない
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-end justify-center z-40"
@@ -147,6 +160,15 @@ export default function SettingsInfoModal({
               ))}
             </ol>
           </div>
+
+          {/* 共有リンク */}
+          <button
+            type="button"
+            onClick={copyShareLink}
+            className="w-full py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-medium text-sm transition-colors"
+          >
+            {copiedLink ? 'コピー済み' : 'アプリのURLをコピー'}
+          </button>
 
           {/* アプリ設定 */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
