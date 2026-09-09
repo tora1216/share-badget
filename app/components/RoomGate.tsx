@@ -107,6 +107,7 @@ export default function RoomGate({ currentUser, defaultNickname, onDone, onCance
           setDoc(doc(db, 'groups', groupId, 'data', 'participants'), { items: [participant] }),
           setDoc(doc(db, 'groups', groupId, 'data', 'fixedCosts'), { items: [] }),
           setDoc(doc(db, 'groups', groupId, 'data', 'events'), { items: [] }),
+          setDoc(doc(db, 'groups', groupId, 'data', 'todos'), { items: [] }),
         )
       }
       await Promise.all(writes)

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { doc, setDoc, getDoc, deleteDoc, onSnapshot } from 'firebase/firestore'
 import { onAuthStateChanged, type User } from 'firebase/auth'
-import type { Entry, Category, CalendarEvent, FixedCost, WarikanSplitMethod, Participant } from '../types'
+import type { Entry, Category, CalendarEvent, FixedCost, WarikanSplitMethod, Participant, Todo } from '../types'
 import { DEFAULT_CATEGORIES, EVENT_COLORS } from '../types'
 import { splitEqual, splitByRatio } from '../../lib/warikan'
 import { getPeriodRange, isInPeriod } from '../../lib/period'
@@ -13,13 +13,14 @@ import { getWarikanDefaults, setWarikanDefaults as persistWarikanDefaults, DEFAU
 import ManagePage from './ManagePage'
 import ReportPage from './ReportPage'
 import WarikanListPage from './WarikanListPage'
+import TodoPage from './TodoPage'
 import MenuPage from './MenuPage'
 import SettingsInfoModal from './SettingsInfoModal'
 import LoginPage from './LoginPage'
 import RoomGate from './RoomGate'
 import RoomListModal from './RoomListModal'
 
-type NavTab = 'calendar' | 'manage' | 'report' | 'warikan' | 'menu'
+type NavTab = 'calendar' | 'manage' | 'report' | 'warikan' | 'todo' | 'menu'
 
 const DAYS_OF_WEEK = ['日', '月', '火', '水', '木', '金', '土']
 
@@ -41,6 +42,7 @@ export default function CalendarPage() {
   const [members, setMembers] = useState<string[]>([])
   const [participants, setParticipants] = useState<Participant[]>([])
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
+  const [todos, setTodos] = useState<Todo[]>([])
   const [darkMode, setDarkMode] = useState(false)
   const [warikanDefaults, setWarikanDefaultsState] = useState<WarikanDefaults>(DEFAULT_WARIKAN_DEFAULTS)
 
@@ -72,6 +74,7 @@ export default function CalendarPage() {
 
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
   const [activeNav, setActiveNav] = useState<NavTab>('calendar')
+  const [lastNav, setLastNav] = useState<NavTab>('calendar')
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null)
   const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const [settingsInfoOpen, setSettingsInfoOpen] = useState(false)
@@ -144,6 +147,9 @@ export default function CalendarPage() {
       onSnapshot(col('fixedCosts'), snap => {
         setFixedCosts((snap.data()?.items as FixedCost[]) ?? [])
       }),
+      onSnapshot(col('todos'), snap => {
+        setTodos((snap.data()?.items as Todo[]) ?? [])
+      }),
       onSnapshot(col('events'), snap => {
         const items = (snap.data()?.items as Partial<CalendarEvent>[]) ?? []
         setCalendarEvents(items.map(e => ({
@@ -182,6 +188,7 @@ export default function CalendarPage() {
     setParticipants([])
     setCalendarEvents([])
     setFixedCosts([])
+    setTodos([])
     setRoomName('')
   }
 
@@ -214,6 +221,11 @@ export default function CalendarPage() {
     warikanParticipants.forEach((m, i) => { next[m] = amounts[i] })
     setWarikanAmounts(next)
   }, [warikan, warikanSplitMethod, amount, warikanParticipants, warikanRatios])
+
+  // メニューアイコンの再タップで元のタブへ戻れるよう、メニュー以外にいた時のタブを覚えておく
+  useEffect(() => {
+    if (activeNav !== 'menu') setLastNav(activeNav)
+  }, [activeNav])
 
   const toggleDarkMode = () => {
     const next = !darkMode
@@ -487,6 +499,10 @@ export default function CalendarPage() {
     writeGroupData('fixedCosts', updated)
   }
 
+  const updateTodos = (updated: Todo[]) => {
+    writeGroupData('todos', updated)
+  }
+
   const prevMonth = () => {
     if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(currentYear - 1) }
     else setCurrentMonth(currentMonth - 1)
@@ -574,10 +590,11 @@ export default function CalendarPage() {
     .sort((a, b) => b.localeCompare(a))
 
   const navTitle: Record<NavTab, string> = {
-    calendar: '支出カレンダー',
+    calendar: 'カレンダー',
     manage: '固定費',
     report: 'レポート',
     warikan: '精算',
+    todo: 'やることリスト',
     menu: 'メニュー',
   }
 
@@ -603,7 +620,7 @@ export default function CalendarPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-black flex flex-col">
       {/* Header */}
       <header className="bg-white/70 dark:bg-black/50 backdrop-blur-xl backdrop-saturate-150 shadow-sm dark:shadow-none dark:border-b dark:border-white/10 px-4 py-3 sticky top-0 z-10 flex items-center justify-between flex-shrink-0">
-        <div className="w-20 flex items-center">
+        <div className="w-24 flex items-center">
           <button
             onClick={() => setRoomListOpen(true)}
             className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
@@ -616,7 +633,7 @@ export default function CalendarPage() {
           </button>
         </div>
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{navTitle[activeNav]}</h1>
-        <div className="w-20 flex items-center justify-end">
+        <div className="w-24 flex items-center justify-end gap-1">
           <button
             onClick={() => setSettingsInfoOpen(true)}
             className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
@@ -627,11 +644,26 @@ export default function CalendarPage() {
               <circle cx="12" cy="12" r="3"/>
             </svg>
           </button>
+          <button
+            onClick={() => { setDialogOpen(false); setActiveNav(activeNav === 'menu' ? lastNav : 'menu') }}
+            className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors ${
+              activeNav === 'menu'
+                ? 'bg-gray-100 dark:bg-gray-800 text-blue-500'
+                : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400'
+            }`}
+            aria-label="メニュー"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
         </div>
       </header>
 
       {/* ページコンテンツ */}
-      <main className="flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom))]">
+      <main className="flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom))] relative">
 
       {activeNav === 'manage' && (
         <ManagePage
@@ -662,7 +694,20 @@ export default function CalendarPage() {
           onOpenEntry={openEditEntry}
         />
       )}
-      {activeNav === 'menu' && (
+      {activeNav === 'todo' && (
+        <TodoPage
+          todos={todos}
+          onUpdate={updateTodos}
+          displayName={myDisplayName}
+          members={members}
+        />
+      )}
+      {/* メニュー：右からスライドインするパネルとして常時マウントし、開閉をtransformで表現する */}
+      <div
+        className={`absolute inset-0 z-20 overflow-y-auto bg-gray-50 dark:bg-black transition-transform duration-300 ease-out ${
+          activeNav === 'menu' ? 'translate-x-0' : 'translate-x-full pointer-events-none'
+        }`}
+      >
         <MenuPage
           roomName={roomName}
           roomInviteCode={displayInviteCode}
@@ -677,7 +722,7 @@ export default function CalendarPage() {
           entries={entries}
           fixedCosts={fixedCosts}
         />
-      )}
+      </div>
 
       {activeNav === 'calendar' && <>
       {/* Month navigation */}
@@ -1327,7 +1372,7 @@ export default function CalendarPage() {
         {([
           {
             key: 'calendar' as NavTab,
-            label: '支出カレンダー',
+            label: 'カレンダー',
             icon: (
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -1373,13 +1418,12 @@ export default function CalendarPage() {
             ),
           },
           {
-            key: 'menu' as NavTab,
-            label: 'メニュー',
+            key: 'todo' as NavTab,
+            label: 'やること',
             icon: (
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="3" y1="6" x2="21" y2="6"/>
-                <line x1="3" y1="12" x2="21" y2="12"/>
-                <line x1="3" y1="18" x2="21" y2="18"/>
+                <path d="M9 11l3 3L22 4"/>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
               </svg>
             ),
           },
