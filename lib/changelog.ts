@@ -1,4 +1,4 @@
-export const APP_VERSION = "2.0.0";
+export const APP_VERSION = "2.1.0";
 
 export type ChangelogEntry = {
   version: string;
@@ -8,6 +8,15 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "2.1.0",
+    date: "2026-09-10",
+    title: "やることリスト機能を追加",
+    changes: [
+      "「やることリスト」タブを追加。",
+      "タスクに担当者・期限・メモを設定できるように変更",
+    ],
+  },
   {
     version: "2.0.0",
     date: "2026-08-28",

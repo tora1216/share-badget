@@ -23,7 +23,6 @@ interface DragState {
 }
 
 export default function TodoPage({ todos, onUpdate, displayName, members }: Props) {
-  const [sectionOpen, setSectionOpen] = useState(true)
   const [quickText, setQuickText] = useState('')
   const [templateOpen, setTemplateOpen] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -261,75 +260,52 @@ export default function TodoPage({ todos, onUpdate, displayName, members }: Prop
       <div className="px-4 pt-4 pb-2">
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm">
           <div className="flex items-center justify-between px-4 py-3 gap-2">
-            <button
-              type="button"
-              onClick={() => setSectionOpen(o => !o)}
-              className="flex items-center gap-2 flex-1 min-w-0 text-left"
-            >
+            <div className="flex items-center gap-2 flex-1 min-w-0">
               <span className="text-lg flex-shrink-0">✅</span>
               <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">やることリスト</span>
-            </button>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => setTemplateOpen(true)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                <span>+</span> テンプレート
-              </button>
-              <button
-                type="button"
-                onClick={() => setSectionOpen(o => !o)}
-                aria-label={sectionOpen ? '折りたたむ' : '展開する'}
-                className="w-6 h-6 flex items-center justify-center text-gray-400 dark:text-gray-500"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                  className={`transition-transform duration-200 ${sectionOpen ? 'rotate-180' : ''}`}
-                >
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </button>
             </div>
+            <button
+              type="button"
+              onClick={() => setTemplateOpen(true)}
+              className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <span>+</span> テンプレート
+            </button>
           </div>
 
-          {sectionOpen && (
-            <div className="px-4 pb-4 flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="例）パスポート、充電器..."
-                value={quickText}
-                onChange={e => setQuickText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') quickAdd() }}
-                className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400"
-              />
-              <button
-                type="button"
-                onClick={quickAdd}
-                disabled={!quickText.trim()}
-                className="flex-shrink-0 flex items-center gap-1 px-4 py-2.5 rounded-xl bg-green-500 hover:bg-green-600 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 text-white text-sm font-semibold transition-colors"
-              >
-                <span>+</span> 追加
-              </button>
-            </div>
-          )}
+          <div className="px-4 pb-4 flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="例）新居の物件探し、婚姻届の提出..."
+              value={quickText}
+              onChange={e => setQuickText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') quickAdd() }}
+              className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400"
+            />
+            <button
+              type="button"
+              onClick={quickAdd}
+              disabled={!quickText.trim()}
+              className="flex-shrink-0 flex items-center gap-1 px-4 py-2.5 rounded-xl bg-green-500 hover:bg-green-600 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 text-white text-sm font-semibold transition-colors"
+            >
+              <span>+</span> 追加
+            </button>
+          </div>
 
           {/* リスト（見出しカードと同じ枠の中に表示） */}
-          {sectionOpen && (
-            <div className="px-4 pb-4">
-              {displayTodos.length === 0 ? (
-                <div className="flex flex-col items-center py-8 text-gray-400 dark:text-gray-600">
-                  <span className="text-3xl mb-2">✅</span>
-                  <p className="text-sm">やることがありません</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {pending.map((item, index) => renderRow(item, 'pending', index))}
-                  {done.map((item, index) => renderRow(item, 'done', index))}
-                </div>
-              )}
-            </div>
-          )}
+          <div className="px-4 pb-4">
+            {displayTodos.length === 0 ? (
+              <div className="flex flex-col items-center py-8 text-gray-400 dark:text-gray-600">
+                <span className="text-3xl mb-2">✅</span>
+                <p className="text-sm">やることがありません</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {pending.map((item, index) => renderRow(item, 'pending', index))}
+                {done.map((item, index) => renderRow(item, 'done', index))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -353,7 +329,6 @@ export default function TodoPage({ todos, onUpdate, displayName, members }: Prop
                   onChange={e => setText(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') saveEdit() }}
                   className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400"
-                  autoFocus
                 />
               </div>
 

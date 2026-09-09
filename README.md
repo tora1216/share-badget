@@ -12,6 +12,7 @@
 - **固定費管理**: 家賃・水道光熱費・サブスクなど毎月かかる費用を管理。割り勘設定は支出入力と共通
 - **カテゴリ別予算**: カテゴリごとに月間予算を設定し、レポートで予算超過を確認
 - **レポート**: 月別の支出サマリー、直近6ヶ月の推移、カテゴリ別内訳
+- **やることリスト**: 引っ越し・結婚・出産育児準備・旅行準備などのテンプレートから一括追加できるタスクリスト。担当者・期限・メモの設定やドラッグ＆ドロップでの並び替えに対応
 - **ダークモード対応**
 
 ## 技術スタック
@@ -67,6 +68,6 @@ npm run dev
 
 ## データモデルの概要
 
-Firestore上では `groups/{groupId}/data/{docName}` の形式で、支出（entries）・カテゴリ（categories）・メンバー（members）・参加者（participants）・固定費（fixedCosts）・予定（calendarEvents）・ルーム情報（meta）をそれぞれ1ドキュメントの配列としてルームごとに保存します。`groupId` は合言葉のSHA-256ハッシュで、招待コード（`inviteCodes/{code}`）はグループIDを引くための非秘匿な目印です。
+Firestore上では `groups/{groupId}/data/{docName}` の形式で、支出（entries）・カテゴリ（categories）・メンバー（members）・参加者（participants）・固定費（fixedCosts）・予定（calendarEvents）・やることリスト（todos）・ルーム情報（meta）をそれぞれ1ドキュメントの配列としてルームごとに保存します。`groupId` は合言葉のSHA-256ハッシュで、招待コード（`inviteCodes/{code}`）はグループIDを引くための非秘匿な目印です。
 
 変更履歴はアプリ内の「メニュー」→バージョン情報（[lib/changelog.ts](./lib/changelog.ts)）から確認できます。
