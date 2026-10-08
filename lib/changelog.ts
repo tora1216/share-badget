@@ -1,4 +1,4 @@
-export const APP_VERSION = "2.1.0";
+export const APP_VERSION = "2.2.0";
 
 export type ChangelogEntry = {
   version: string;
@@ -8,6 +8,19 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "2.2.0",
+    date: "2026-10-08",
+    title: "メンバー管理の整理・割り勘入力の改善",
+    changes: [
+      "メンバーをGoogleログイン済みの参加者に一本化し、手動でのメンバー追加・削除を廃止",
+      "精算日を1〜31日から選べるように変更し、デフォルトを月末締めに変更",
+      "支出・収入入力時、割り勘トグルをデフォルトでON・支払った人を自分に設定",
+      "割り勘の金額指定で、入力欄に残っていた0を解消し、2人で割り勘の場合は片方の入力でもう片方に残額を自動入力",
+      "精算リストに期間の日付範囲を表示、未精算の支出がない場合は精算完了メッセージを表示",
+      "メニュー表示時に画面が横スクロールしてしまう不具合を修正",
+    ],
+  },
   {
     version: "2.1.0",
     date: "2026-09-10",

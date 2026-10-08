@@ -73,7 +73,7 @@ export default function ReportPage({ entries, categories, onUpdateCategories, se
         </button>
         <div className="text-center">
           <span className="font-semibold text-gray-800 dark:text-gray-100">{year}年{month + 1}月</span>
-          {settlementDay > 1 && (
+          {settlementDay !== 31 && (
             <p className="text-[10px] text-gray-400 dark:text-gray-500">{period.start.replaceAll('-', '/')} 〜 {period.end.replaceAll('-', '/')}</p>
           )}
         </div>

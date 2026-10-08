@@ -51,6 +51,19 @@ export default function ManagePage({ fixedCosts, onUpdate, members, displayName,
     setWarikanAmounts(next)
   }, [warikan, warikanSplitMethod, amount, warikanParticipants, warikanRatios])
 
+  // 金額指定での割り勘入力。2人で割り勘の場合、片方を入力したらもう片方に残額を自動入力する
+  const handleWarikanAmountChange = (member: string, raw: string) => {
+    const value = raw === '' ? 0 : Number(raw) || 0
+    setWarikanAmounts(prev => {
+      const next = { ...prev, [member]: value }
+      if (warikanParticipants.length === 2) {
+        const other = warikanParticipants.find(p => p !== member)
+        if (other) next[other] = Math.max((Number(amount) || 0) - value, 0)
+      }
+      return next
+    })
+  }
+
   const resetWarikanDetails = () => {
     setWarikanParticipants(members)
     setWarikanSplitMethod(warikanDefaults.splitMethod)
@@ -379,8 +392,9 @@ export default function ManagePage({ fixedCosts, onUpdate, members, displayName,
                                     <input
                                       type="number"
                                       inputMode="numeric"
-                                      value={warikanAmounts[m] ?? 0}
-                                      onChange={e => setWarikanAmounts(prev => ({ ...prev, [m]: Number(e.target.value) || 0 }))}
+                                      value={warikanAmounts[m] || ''}
+                                      placeholder="0"
+                                      onChange={e => handleWarikanAmountChange(m, e.target.value)}
                                       className="w-24 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-sm text-right bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
                                     />
                                   ) : (

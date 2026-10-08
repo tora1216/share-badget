@@ -9,7 +9,7 @@ export interface WarikanDefaults {
 const STORAGE_KEY = 'share-badget-warikan-defaults'
 
 export const DEFAULT_WARIKAN_DEFAULTS: WarikanDefaults = {
-  defaultOn: false,
+  defaultOn: true,
   splitMethod: 'equal',
 }
 

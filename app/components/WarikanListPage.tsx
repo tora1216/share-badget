@@ -84,6 +84,11 @@ export default function WarikanListPage({ entries, categories, settlementDay, on
     )
   }
 
+  const formatShortDate = (dateStr: string) => {
+    const [, m, d] = dateStr.split('-').map(Number)
+    return `${m}/${d}`
+  }
+
   const renderGroup = (group: (typeof periodGroups)[number]) => {
     const isAddOn = group.settled.length > 0 && group.unsettled.length > 0
     return (
@@ -91,7 +96,14 @@ export default function WarikanListPage({ entries, categories, settlementDay, on
         key={group.key}
         className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden"
       >
-        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 px-4 pt-4 pb-2">{group.label}</p>
+        <div className="px-4 pt-4 pb-2 flex items-baseline gap-1.5">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{group.label}</p>
+          {settlementDay !== 31 && (
+            <p className="text-[11px] text-gray-400 dark:text-gray-500">
+              （{formatShortDate(group.range.start)}〜{formatShortDate(group.range.end)}）
+            </p>
+          )}
+        </div>
 
         {group.settled.length > 0 && (
           <div className="divide-y divide-gray-50 dark:divide-gray-800">
@@ -136,7 +148,7 @@ export default function WarikanListPage({ entries, categories, settlementDay, on
         <span className="text-3xl">💸</span>
       </div>
 
-      {transfers.length > 0 && (
+      {transfers.length > 0 ? (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4">
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">精算サマリー（これだけ払えばOK）</p>
           <div className="space-y-2">
@@ -154,6 +166,11 @@ export default function WarikanListPage({ entries, categories, settlementDay, on
               </div>
             ))}
           </div>
+        </div>
+      ) : unsettled.length === 0 && warikanEntries.length > 0 && (
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 flex items-center gap-3">
+          <span className="text-2xl flex-shrink-0">🎉</span>
+          <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">精算完了！未精算の支出はありません</p>
         </div>
       )}
 

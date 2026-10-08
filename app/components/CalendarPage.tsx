@@ -35,11 +35,10 @@ export default function CalendarPage() {
   const [userRooms, setUserRooms] = useState<UserRooms | null>(null)
   const [userRoomsChecked, setUserRoomsChecked] = useState(false)
   const [roomName, setRoomName] = useState('')
-  const [settlementDay, setSettlementDay] = useState(1)
+  const [settlementDay, setSettlementDay] = useState(31)
   const [metaInviteCode, setMetaInviteCode] = useState('')
   const [entries, setEntries] = useState<Entry[]>([])
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES)
-  const [members, setMembers] = useState<string[]>([])
   const [participants, setParticipants] = useState<Participant[]>([])
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
   const [todos, setTodos] = useState<Todo[]>([])
@@ -48,6 +47,8 @@ export default function CalendarPage() {
 
   const activeGroupId = userRooms?.mainRoomId || ''
   const myDisplayName = participants.find(p => p.uid === authUser?.uid)?.displayName ?? authUser?.displayName ?? ''
+  // 割り勘・タスク担当者などの選択肢は「参加中のメンバー」から直接導出する（別リストとして二重管理しない）
+  const members = participants.map(p => p.displayName)
 
   // 日付ごとの明細グループへのスクロール参照
   const groupRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -138,9 +139,6 @@ export default function CalendarPage() {
         const items = snap.data()?.items as Category[] | undefined
         setCategories(items && items.length > 0 ? items : DEFAULT_CATEGORIES)
       }),
-      onSnapshot(col('members'), snap => {
-        setMembers((snap.data()?.items as string[]) ?? [])
-      }),
       onSnapshot(col('participants'), snap => {
         setParticipants((snap.data()?.items as Participant[]) ?? [])
       }),
@@ -163,7 +161,7 @@ export default function CalendarPage() {
       }),
       onSnapshot(col('meta'), snap => {
         setRoomName((snap.data()?.name as string | undefined) ?? '')
-        setSettlementDay((snap.data()?.settlementDay as number | undefined) ?? 1)
+        setSettlementDay((snap.data()?.settlementDay as number | undefined) ?? 31)
         setMetaInviteCode((snap.data()?.inviteCode as string | undefined) ?? '')
       }),
     ]
@@ -184,7 +182,6 @@ export default function CalendarPage() {
       .catch(err => console.error('ルームを離れる処理に失敗しました', err))
     setEntries([])
     setCategories(DEFAULT_CATEGORIES)
-    setMembers([])
     setParticipants([])
     setCalendarEvents([])
     setFixedCosts([])
@@ -196,7 +193,6 @@ export default function CalendarPage() {
     const trimmed = name.trim()
     const uid = authUser?.uid
     if (!trimmed || !uid || !activeGroupId) return
-    if (!members.includes(trimmed)) writeGroupData('members', [...members, trimmed])
     writeGroupData('participants', participants.map(p => (p.uid === uid ? { ...p, displayName: trimmed } : p)))
   }
 
@@ -221,6 +217,19 @@ export default function CalendarPage() {
     warikanParticipants.forEach((m, i) => { next[m] = amounts[i] })
     setWarikanAmounts(next)
   }, [warikan, warikanSplitMethod, amount, warikanParticipants, warikanRatios])
+
+  // 金額指定での割り勘入力。2人で割り勘の場合、片方を入力したらもう片方に残額を自動入力する
+  const handleWarikanAmountChange = (member: string, raw: string) => {
+    const value = raw === '' ? 0 : Number(raw) || 0
+    setWarikanAmounts(prev => {
+      const next = { ...prev, [member]: value }
+      if (warikanParticipants.length === 2) {
+        const other = warikanParticipants.find(p => p !== member)
+        if (other) next[other] = Math.max((Number(amount) || 0) - value, 0)
+      }
+      return next
+    })
+  }
 
   // メニューアイコンの再タップで元のタブへ戻れるよう、メニュー以外にいた時のタブを覚えておく
   useEffect(() => {
@@ -456,10 +465,6 @@ export default function CalendarPage() {
     writeGroupData('categories', updated)
   }
 
-  const updateMembers = (updated: string[]) => {
-    writeGroupData('members', updated)
-  }
-
   const updateSettlementDay = (day: number) => {
     if (!activeGroupId) return
     setDoc(doc(db, 'groups', activeGroupId, 'data', 'meta'), { settlementDay: day }, { merge: true })
@@ -663,7 +668,7 @@ export default function CalendarPage() {
       </header>
 
       {/* ページコンテンツ */}
-      <main className="flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom))] relative">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden pb-[calc(4rem+env(safe-area-inset-bottom))] relative">
 
       {activeNav === 'manage' && (
         <ManagePage
@@ -717,10 +722,6 @@ export default function CalendarPage() {
           onRenameDisplayName={renameDisplayName}
           onLeaveRoom={leaveRoom}
           participants={participants}
-          members={members}
-          onUpdateMembers={updateMembers}
-          entries={entries}
-          fixedCosts={fixedCosts}
         />
       </div>
 
@@ -1287,8 +1288,9 @@ export default function CalendarPage() {
                                     <input
                                       type="number"
                                       inputMode="numeric"
-                                      value={warikanAmounts[m] ?? 0}
-                                      onChange={e => setWarikanAmounts(prev => ({ ...prev, [m]: Number(e.target.value) || 0 }))}
+                                      value={warikanAmounts[m] || ''}
+                                      placeholder="0"
+                                      onChange={e => handleWarikanAmountChange(m, e.target.value)}
                                       className="w-24 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-sm text-right bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
                                     />
                                   ) : (

@@ -16,14 +16,7 @@ interface Props {
 
 type Tab = 'create' | 'join'
 
-async function ensureMembership(groupId: string, displayName: string, participant: Participant) {
-  const membersRef = doc(db, 'groups', groupId, 'data', 'members')
-  const membersSnap = await getDoc(membersRef)
-  const members = (membersSnap.data()?.items as string[] | undefined) ?? []
-  if (!members.includes(displayName)) {
-    await setDoc(membersRef, { items: [...members, displayName] })
-  }
-
+async function ensureMembership(groupId: string, participant: Participant) {
   const participantsRef = doc(db, 'groups', groupId, 'data', 'participants')
   const participantsSnap = await getDoc(participantsRef)
   const existingParticipants = (participantsSnap.data()?.items as Participant[] | undefined) ?? []
@@ -71,16 +64,16 @@ export default function RoomGate({ currentUser, defaultNickname, onDone, onCance
     try {
       const groupId = await hashPassphrase(trimmedPass)
       const metaRef = doc(db, 'groups', groupId, 'data', 'meta')
-      const membersRef = doc(db, 'groups', groupId, 'data', 'members')
+      const entriesRef = doc(db, 'groups', groupId, 'data', 'entries')
       const metaSnap = await getDoc(metaRef)
       if (metaSnap.exists()) {
         setError('その合言葉は既に使われています。別の合言葉にするか、招待コードで参加してください。')
         return
       }
 
-      // meta は無いが members はある = このアップデート以前に作られた既存ルーム。データは温存して移行する
-      const membersSnap = await getDoc(membersRef)
-      const isAdopting = membersSnap.exists()
+      // meta は無いが entries はある = このアップデート以前に作られた既存ルーム。データは温存して移行する
+      const entriesSnap = await getDoc(entriesRef)
+      const isAdopting = entriesSnap.exists()
 
       let inviteCode = ''
       for (let i = 0; i < 5; i++) {
@@ -101,9 +94,8 @@ export default function RoomGate({ currentUser, defaultNickname, onDone, onCance
       ]
       if (!isAdopting) {
         writes.push(
-          setDoc(doc(db, 'groups', groupId, 'data', 'entries'), { items: [] }),
+          setDoc(entriesRef, { items: [] }),
           setDoc(doc(db, 'groups', groupId, 'data', 'categories'), { items: DEFAULT_CATEGORIES }),
-          setDoc(membersRef, { items: [participant.displayName] }),
           setDoc(doc(db, 'groups', groupId, 'data', 'participants'), { items: [participant] }),
           setDoc(doc(db, 'groups', groupId, 'data', 'fixedCosts'), { items: [] }),
           setDoc(doc(db, 'groups', groupId, 'data', 'events'), { items: [] }),
@@ -112,7 +104,7 @@ export default function RoomGate({ currentUser, defaultNickname, onDone, onCance
       }
       await Promise.all(writes)
       if (isAdopting) {
-        await ensureMembership(groupId, participant.displayName, participant)
+        await ensureMembership(groupId, participant)
       }
 
       setCreatedRoom({ groupId, name, passphrase: trimmedPass, inviteCode })
@@ -179,7 +171,7 @@ export default function RoomGate({ currentUser, defaultNickname, onDone, onCance
       const name = (metaSnap.data()?.name as string | undefined) ?? 'ルーム'
       const participant = buildParticipant()
 
-      await ensureMembership(groupId, participant.displayName, participant)
+      await ensureMembership(groupId, participant)
       await addRoomToUser(currentUser.uid, {
         groupId,
         name,

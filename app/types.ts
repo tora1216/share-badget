@@ -74,7 +74,7 @@ export interface Todo {
   memo?: string
   dueDate?: string // YYYY-MM-DD（任意）
   createdBy?: string
-  assignees?: string[] // 担当者（membersの表示名。0人=未設定、1人=個人、2人以上=全員 など）
+  assignees?: string[] // 担当者（参加中メンバーの表示名。0人=未設定、1人=個人、2人以上=全員 など）
 }
 
 export interface TodoTemplate {

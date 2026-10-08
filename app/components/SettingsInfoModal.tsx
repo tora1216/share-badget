@@ -276,39 +276,19 @@ export default function SettingsInfoModal({
                 </div>
 
                 <div className="pt-3 border-t border-gray-100 dark:border-gray-800">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600 dark:text-gray-300">精算日を設定</p>
-                      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-                        {settlementDay > 1
-                          ? `毎月${settlementDay}日を含めて締め、翌日から次の期間として集計します`
-                          : 'OFFの場合は毎月1日〜末日で集計します（カレンダー通りの月区切り）'}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onUpdateSettlementDay(settlementDay > 1 ? 1 : 25)}
-                      className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
-                        settlementDay > 1 ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'
-                      }`}
-                      aria-label="精算日設定の切替"
-                    >
-                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
-                        settlementDay > 1 ? 'translate-x-5' : 'translate-x-0'
-                      }`} />
-                    </button>
-                  </div>
-                  {settlementDay > 1 && (
-                    <select
-                      value={settlementDay}
-                      onChange={e => onUpdateSettlementDay(Number(e.target.value))}
-                      className="w-full mt-3 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
-                    >
-                      {Array.from({ length: 27 }, (_, i) => i + 2).map(d => (
-                        <option key={d} value={d}>{d}日締め</option>
-                      ))}
-                    </select>
-                  )}
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300">精算日を設定</p>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 mb-3">
+                    毎月{settlementDay === 31 ? '末日' : `${settlementDay}日`}を含めて締め、翌日から次の期間として集計します
+                  </p>
+                  <select
+                    value={settlementDay}
+                    onChange={e => onUpdateSettlementDay(Number(e.target.value))}
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+                  >
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                      <option key={d} value={d}>{d === 31 ? '31日（月末）' : `${d}日`}締め</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             )}

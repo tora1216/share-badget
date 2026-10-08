@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { signOut } from 'firebase/auth'
 import { auth } from '../../lib/firebase'
-import type { Participant, Entry, FixedCost } from '../types'
+import type { Participant } from '../types'
 import { APP_VERSION, CHANGELOG } from '../../lib/changelog'
 
 interface Props {
@@ -15,10 +15,6 @@ interface Props {
   onRenameDisplayName: (name: string) => void
   onLeaveRoom: () => void
   participants: Participant[]
-  members: string[]
-  onUpdateMembers: (members: string[]) => void
-  entries: Entry[]
-  fixedCosts: FixedCost[]
 }
 
 export default function MenuPage({
@@ -30,17 +26,12 @@ export default function MenuPage({
   onRenameDisplayName,
   onLeaveRoom,
   participants,
-  members,
-  onUpdateMembers,
-  entries,
-  fixedCosts,
 }: Props) {
   const [showPassphrase, setShowPassphrase] = useState(false)
   const [copied, setCopied] = useState<'code' | 'pass' | null>(null)
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState(displayName)
   const [changelogOpen, setChangelogOpen] = useState(true)
-  const [newMember, setNewMember] = useState('')
 
   const copyText = async (text: string, which: 'code' | 'pass') => {
     try {
@@ -55,26 +46,6 @@ export default function MenuPage({
   const saveNameDraft = () => {
     onRenameDisplayName(nameDraft)
     setEditingName(false)
-  }
-
-  const addMember = () => {
-    const name = newMember.trim()
-    if (!name || members.includes(name)) return
-    onUpdateMembers([...members, name])
-    setNewMember('')
-  }
-
-  const countMemberUsage = (name: string) =>
-    entries.filter(e => e.paidBy === name || (e.warikanParticipants ?? []).includes(name)).length +
-    fixedCosts.filter(f => f.paidBy === name || (f.warikanParticipants ?? []).includes(name)).length
-
-  const deleteMember = (name: string) => {
-    const usage = countMemberUsage(name)
-    const message = usage > 0
-      ? `「${name}」は過去の${usage}件の支出・固定費に関わっています。メンバー一覧からは削除されますが、それらの記録には名前がそのまま残ります。削除しますか？`
-      : `「${name}」を削除しますか？`
-    if (!confirm(message)) return
-    onUpdateMembers(members.filter(m => m !== name))
   }
 
   return (
@@ -167,7 +138,7 @@ export default function MenuPage({
         </div>
 
         <div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">参加中のメンバー（Googleでログイン済み）</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">メンバー</p>
           {participants.length > 0 ? (
             <div className="space-y-2">
               {participants.map(p => (
@@ -188,49 +159,6 @@ export default function MenuPage({
           ) : (
             <p className="text-sm text-gray-400 dark:text-gray-500">まだ誰も参加していません</p>
           )}
-        </div>
-
-        <div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">メンバー（割り勘に使う名前）</p>
-          {members.length > 0 && (
-            <div className="space-y-2 mb-2">
-              {members.map(m => (
-                <div
-                  key={m}
-                  className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">👤</span>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{m}</span>
-                  </div>
-                  <button
-                    onClick={() => deleteMember(m)}
-                    className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-red-100 dark:hover:bg-red-900/50 text-gray-400 hover:text-red-500 transition-colors text-xs"
-                    aria-label={`${m}を削除`}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="名前"
-              value={newMember}
-              onChange={e => setNewMember(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') addMember() }}
-              className="flex-1 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400"
-            />
-            <button
-              onClick={addMember}
-              disabled={!newMember.trim()}
-              className="px-4 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 text-white font-medium text-sm transition-colors"
-            >
-              追加
-            </button>
-          </div>
         </div>
 
         <button
