@@ -3,12 +3,12 @@ export interface Category {
   name: string
   emoji: string
   type: 'expense' | 'income'
-  monthlyBudget?: number // 支出カテゴリのみ使用（月あたりの予算額、円）
+  monthlyBudget?: number // 支出カテゴリのみ使用(月あたりの予算額、円)
 }
 
 export type WarikanSplitMethod = 'equal' | 'ratio' | 'amount'
 
-// ルーム参加メンバーの一覧表示用（uid で名寄せする）。displayName はニックネームで、
+// ルーム参加メンバーの一覧表示用(uid で名寄せする)。displayName はニックネームで、
 // 本名保護のためGoogleアカウントのメールアドレスは保存しない
 export interface Participant {
   uid: string
@@ -49,11 +49,11 @@ export interface FixedCost {
 
 export interface CalendarEvent {
   id: string
-  date: string // YYYY-MM-DD（開始日）
-  endDate: string // YYYY-MM-DD（終了日、単日の場合は date と同じ）
+  date: string // YYYY-MM-DD(開始日)
+  endDate: string // YYYY-MM-DD(終了日、単日の場合は date と同じ)
   title: string
   note?: string
-  color: string // 帯の背景色（hex）
+  color: string // 帯の背景色(hex)
 }
 
 export const EVENT_COLORS: string[] = [
@@ -72,9 +72,9 @@ export interface Todo {
   text: string
   done: boolean
   memo?: string
-  dueDate?: string // YYYY-MM-DD（任意）
+  dueDate?: string // YYYY-MM-DD(任意)
   createdBy?: string
-  assignees?: string[] // 担当者（参加中メンバーの表示名。0人=未設定、1人=個人、2人以上=全員 など）
+  assignees?: string[] // 担当者(参加中メンバーの表示名。0人=未設定、1人=個人、2人以上=全員 など)
 }
 
 export interface TodoTemplate {
@@ -92,19 +92,19 @@ export const TODO_TEMPLATES: TodoTemplate[] = [
     tasks: [
       '新居の物件探し',
       '新居の賃貸借契約',
-      '現住居の解約通知（管理会社・大家へ連絡）',
+      '現住居の解約通知(管理会社・大家へ連絡)',
       '引っ越し業者の見積もり依頼',
       '引っ越し業者の予約',
       '不用品の処分・粗大ゴミ回収予約',
-      '荷造り（梱包資材の準備）',
+      '荷造り(梱包資材の準備)',
       '電気の停止手続き',
       '電気の開始手続き',
       'ガスの停止手続き',
-      'ガスの開始手続き（立ち会い予約）',
+      'ガスの開始手続き(立ち会い予約)',
       '水道の停止手続き',
       '水道の開始手続き',
       'インターネット回線の移転・契約',
-      '郵便物の転送届（郵便局）',
+      '郵便物の転送届(郵便局)',
       '住民票の異動届',
       'マイナンバーカードの住所変更',
       '運転免許証の住所変更',
@@ -128,7 +128,7 @@ export const TODO_TEMPLATES: TodoTemplate[] = [
       '入籍日を決める',
       '婚姻届の提出',
       '婚姻届の証人を依頼',
-      '姓の変更手続き（銀行・免許証・パスポート等）',
+      '姓の変更手続き(銀行・免許証・パスポート等)',
       '結婚式場探し・見学',
       '結婚式の日取り決定',
       '招待客リストの作成',
@@ -150,9 +150,9 @@ export const TODO_TEMPLATES: TodoTemplate[] = [
       '里帰り出産の相談・調整',
       '出産育児一時金の手続き',
       '産休・育休の会社への申請',
-      '入院準備（バッグの準備）',
+      '入院準備(バッグの準備)',
       '陣痛タクシーの登録',
-      'ベビー用品の購入（ベビーベッド・チャイルドシートなど）',
+      'ベビー用品の購入(ベビーベッド・チャイルドシートなど)',
       '名前を考える',
       '出生届の準備',
       '健康保険の加入手続き',
@@ -170,14 +170,14 @@ export const TODO_TEMPLATES: TodoTemplate[] = [
       '予算を決める',
       '航空券・新幹線などの移動手段を予約',
       'ホテル・宿泊先を予約',
-      '現地の交通手段（レンタカー・送迎など）を予約',
+      '現地の交通手段(レンタカー・送迎など)を予約',
       'パスポート・ビザの確認',
       '海外旅行保険の加入',
       '観光スポット・レストランのリサーチ',
       '持ち物リストの作成・荷造り',
       '両替・クレジットカードの準備',
       'Wi-Fi・SIMカードの手配',
-      '留守中の対応（郵便物・ペット・植物など）',
+      '留守中の対応(郵便物・ペット・植物など)',
     ],
   },
 ]

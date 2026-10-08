@@ -32,12 +32,12 @@ export default function TodoPage({ todos, onUpdate, displayName, members }: Prop
   const [assignees, setAssignees] = useState<string[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
 
-  // 並び替え中の楽観的な表示順。確定後はFirestoreの購読更新（todos）が届き次第、破棄してpropsに委ねる
+  // 並び替え中の楽観的な表示順。確定後はFirestoreの購読更新(todos)が届き次第、破棄してpropsに委ねる
   const [dragTodos, setDragTodos] = useState<Todo[] | null>(null)
   const [dragState, setDragState] = useState<DragState | null>(null)
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
-  // todosが更新されたら（＝並び替えがFirestoreに反映されたら）楽観的な表示順を手放す
+  // todosが更新されたら(＝並び替えがFirestoreに反映されたら)楽観的な表示順を手放す
   const [syncedTodos, setSyncedTodos] = useState(todos)
   if (todos !== syncedTodos) {
     setSyncedTodos(todos)
@@ -48,7 +48,7 @@ export default function TodoPage({ todos, onUpdate, displayName, members }: Prop
   const pending = displayTodos.filter(t => !t.done)
   const done = displayTodos.filter(t => t.done)
 
-  // ドラッグ中はpending/doneの配列自体は動かさず、見た目だけtransformで動かす（指を離した時に1回だけ確定する）
+  // ドラッグ中はpending/doneの配列自体は動かさず、見た目だけtransformで動かす(指を離した時に1回だけ確定する)
   const dragDeltaY = dragState ? dragState.currentY - dragState.startY : 0
   const dragTargetIndex = dragState
     ? Math.max(0, Math.min(dragState.sectionIds.length - 1, dragState.draggedIndex + Math.round(dragDeltaY / dragState.rowHeight)))
@@ -276,7 +276,7 @@ export default function TodoPage({ todos, onUpdate, displayName, members }: Prop
           <div className="px-4 pb-4 flex items-center gap-2">
             <input
               type="text"
-              placeholder="例）新居の物件探し、婚姻届の提出..."
+              placeholder="例)新居の物件探し、婚姻届の提出..."
               value={quickText}
               onChange={e => setQuickText(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') quickAdd() }}
@@ -292,7 +292,7 @@ export default function TodoPage({ todos, onUpdate, displayName, members }: Prop
             </button>
           </div>
 
-          {/* リスト（見出しカードと同じ枠の中に表示） */}
+          {/* リスト(見出しカードと同じ枠の中に表示) */}
           <div className="px-4 pb-4">
             {displayTodos.length === 0 ? (
               <div className="flex flex-col items-center py-8 text-gray-400 dark:text-gray-600">
@@ -333,7 +333,7 @@ export default function TodoPage({ todos, onUpdate, displayName, members }: Prop
               </div>
 
               <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-1">期限（任意）</label>
+                <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-1">期限(任意)</label>
                 <input
                   type="date"
                   value={dueDate}
@@ -343,7 +343,7 @@ export default function TodoPage({ todos, onUpdate, displayName, members }: Prop
               </div>
 
               <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-1">メモ（任意）</label>
+                <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-1">メモ(任意)</label>
                 <input
                   type="text"
                   placeholder="詳細を入力..."
@@ -356,7 +356,7 @@ export default function TodoPage({ todos, onUpdate, displayName, members }: Prop
 
               {members.length > 0 && (
                 <div>
-                  <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-2">担当者（任意）</label>
+                  <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-2">担当者(任意)</label>
                   <div className="flex flex-wrap gap-2">
                     {members.map(m => (
                       <button

@@ -23,12 +23,12 @@ const firebaseConfig: FirebaseOptions = useEmulator
     }
 
 // Next.js は app/ 以下を一度サーバーでもレンダーするため、
-// getApps() で二重初期化を防ぐ（App Router のホットリロード対策も兼ねる）
+// getApps() で二重初期化を防ぐ(App Router のホットリロード対策も兼ねる)
 const app = getApps().length ? getApps()[0]! : initializeApp(firebaseConfig)
 
 let emulatorsConnected = false
 
-// このアプリのデータ型は「値が無い」を undefined で表す（例: warikan: undefined）。
+// このアプリのデータ型は「値が無い」を undefined で表す(例: warikan: undefined)。
 // localStorage 時代は JSON.stringify が黙って undefined を落としてくれていたが、
 // Firestore の SDK は undefined フィールドをデフォルトで拒否してエラーになるため、
 // ignoreUndefinedProperties で localStorage 時代と同じ挙動に揃える。

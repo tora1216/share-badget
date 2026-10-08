@@ -12,9 +12,9 @@ export interface UserRooms {
 }
 
 // 合言葉から SHA-256 ハッシュを計算し、そのままグループIDとして使う
-// （平文の合言葉は groups/{groupId} 側にはどこにも保存・送信しない。正しい合言葉を
+// (平文の合言葉は groups/{groupId} 側にはどこにも保存・送信しない。正しい合言葉を
 //   知っている人だけが対応するグループのドキュメントパスを導出できる、という単純な仕組み。
-//   招待コードは groupId への単なる目印であり、合言葉の代わりにはならない）
+//   招待コードは groupId への単なる目印であり、合言葉の代わりにはならない)
 export async function hashPassphrase(passphrase: string): Promise<string> {
   const normalized = passphrase.trim()
   const data = new TextEncoder().encode(normalized)

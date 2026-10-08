@@ -285,7 +285,7 @@ export default function RoomGate({ currentUser, defaultNickname, onDone, onCance
         <div>
           <input
             type="text"
-            placeholder="ニックネーム（例：たろう）"
+            placeholder="ニックネーム(例：たろう)"
             value={nickname}
             onChange={e => setNickname(e.target.value)}
             className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400"
@@ -319,7 +319,7 @@ export default function RoomGate({ currentUser, defaultNickname, onDone, onCance
           <div className="space-y-3">
             <input
               type="text"
-              placeholder="ルーム名（例：田中家の家計簿）"
+              placeholder="ルーム名(例：田中家の家計簿)"
               value={roomName}
               onChange={e => setRoomName(e.target.value)}
               className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400"

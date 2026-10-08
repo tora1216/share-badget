@@ -22,8 +22,8 @@ export default function WarikanListPage({ entries, categories, settlementDay, on
   const unsettledTotal = unsettled.reduce((s, e) => s + e.amount, 0)
   const transfers = computeSettlementSummary(unsettled)
 
-  // 月（精算日基準の期間）ごとにグループ化。同じ月に精算済みと未精算が混ざる場合は
-  // 未精算分を「追加分（精算後に追加）」として目立たせる
+  // 月(精算日基準の期間)ごとにグループ化。同じ月に精算済みと未精算が混ざる場合は
+  // 未精算分を「追加分(精算後に追加)」として目立たせる
   const periodGroups = (() => {
     const map = new Map<string, Entry[]>()
     for (const e of warikanEntries) {
@@ -58,7 +58,7 @@ export default function WarikanListPage({ entries, categories, settlementDay, on
           <span className="text-xl flex-shrink-0">{cat?.emoji ?? '📌'}</span>
           <span className="flex-1 min-w-0 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
             {cat?.name ?? '未分類'}
-            {entry.memo && <span className="text-gray-400 dark:text-gray-500 font-normal">　（{entry.memo}）</span>}
+            {entry.memo && <span className="text-gray-400 dark:text-gray-500 font-normal">　({entry.memo})</span>}
             <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{m}/{d}</span>
             {entry.paidBy && (
               <span className="ml-1.5 text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-md">
@@ -100,7 +100,7 @@ export default function WarikanListPage({ entries, categories, settlementDay, on
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{group.label}</p>
           {settlementDay !== 31 && (
             <p className="text-[11px] text-gray-400 dark:text-gray-500">
-              （{formatShortDate(group.range.start)}〜{formatShortDate(group.range.end)}）
+              ({formatShortDate(group.range.start)}〜{formatShortDate(group.range.end)})
             </p>
           )}
         </div>
@@ -115,7 +115,7 @@ export default function WarikanListPage({ entries, categories, settlementDay, on
           <div className={isAddOn ? 'bg-orange-50/60 dark:bg-orange-950/20 border-t border-orange-100 dark:border-orange-900/40' : ''}>
             <div className="flex items-center justify-between px-4 py-2">
               <span className={`text-xs font-semibold ${isAddOn ? 'text-orange-600 dark:text-orange-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                {isAddOn ? '追加分（精算後に追加）' : '未精算'}
+                {isAddOn ? '追加分(精算後に追加)' : '未精算'}
               </span>
               <button
                 type="button"
@@ -150,7 +150,7 @@ export default function WarikanListPage({ entries, categories, settlementDay, on
 
       {transfers.length > 0 ? (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">精算サマリー（これだけ払えばOK）</p>
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">精算サマリー(これだけ払えばOK)</p>
           <div className="space-y-2">
             {transfers.map((t, i) => (
               <div

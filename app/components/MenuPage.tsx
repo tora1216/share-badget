@@ -114,7 +114,7 @@ export default function MenuPage({
         </div>
 
         <div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">合言葉（招待コードとあわせて共有してください）</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">合言葉(招待コードとあわせて共有してください)</p>
           <div className="flex items-center gap-2">
             <div className="flex-1 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 font-mono truncate">
               {showPassphrase ? roomPassphrase : '•'.repeat(Math.max(roomPassphrase.length, 6))}

@@ -47,7 +47,7 @@ export default function CalendarPage() {
 
   const activeGroupId = userRooms?.mainRoomId || ''
   const myDisplayName = participants.find(p => p.uid === authUser?.uid)?.displayName ?? authUser?.displayName ?? ''
-  // 割り勘・タスク担当者などの選択肢は「参加中のメンバー」から直接導出する（別リストとして二重管理しない）
+  // 割り勘・タスク担当者などの選択肢は「参加中のメンバー」から直接導出する(別リストとして二重管理しない)
   const members = participants.map(p => p.displayName)
 
   // 日付ごとの明細グループへのスクロール参照
@@ -93,7 +93,7 @@ export default function CalendarPage() {
     setDarkMode(isDark)
   }, [])
 
-  // 割り勘のデフォルト設定も端末（ユーザー）ごとのローカル設定
+  // 割り勘のデフォルト設定も端末(ユーザー)ごとのローカル設定
   useEffect(() => {
     setWarikanDefaultsState(getWarikanDefaults())
   }, [])
@@ -127,7 +127,7 @@ export default function CalendarPage() {
     return () => unsub()
   }, [authUser])
 
-  // メインルームが決まったら Firestore の各ドキュメントに購読を張る（リアルタイム共有）
+  // メインルームが決まったら Firestore の各ドキュメントに購読を張る(リアルタイム共有)
   useEffect(() => {
     if (!activeGroupId) return
     const col = (name: string) => doc(db, 'groups', activeGroupId, 'data', name)
@@ -333,7 +333,7 @@ export default function CalendarPage() {
     if (tab !== 'event') setCategoryId(firstCategoryId())
   }
 
-  // グループのFirestoreドキュメントを丸ごと上書き保存する（このアプリは配列全体を1ドキュメントに保存する方式）
+  // グループのFirestoreドキュメントを丸ごと上書き保存する(このアプリは配列全体を1ドキュメントに保存する方式)
   const writeGroupData = (name: string, items: unknown[]) => {
     if (!activeGroupId) return
     setDoc(doc(db, 'groups', activeGroupId, 'data', name), { items })
@@ -346,6 +346,10 @@ export default function CalendarPage() {
     f.type === 'expense' &&
     !entries.some(e => e.fixedCostId === f.id && e.date.startsWith(thisMonthPrefix))
   )
+  // 固定費から追加済みの支出(全期間)。元の固定費が削除済みでも残ってしまうことがあるため、管理タブから個別に取り消せるようにする
+  const fixedCostSourcedEntries = entries
+    .filter(e => e.fixedCostId)
+    .sort((a, b) => b.date.localeCompare(a.date))
 
   // ボタン操作で、今月分の固定費をまとめて支出として追加する
   const addThisMonthFixedCosts = () => {
@@ -527,13 +531,13 @@ export default function CalendarPage() {
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`
 
-  // 固定費から自動生成された支出はカレンダー上には表示しない（固定費タブ・精算・レポートには表示される）
+  // 固定費から自動生成された支出はカレンダー上には表示しない(固定費タブ・精算・レポートには表示される)
   const calendarEntries = entries.filter(e => !e.fixedCostId)
 
   const getEntriesForDay = (day: number) =>
     calendarEntries.filter(e => e.date === `${monthPrefix}-${String(day).padStart(2, '0')}`)
 
-  // 週ごとのセル配列（帯を週単位のグリッドで描画するため）
+  // 週ごとのセル配列(帯を週単位のグリッドで描画するため)
   type WeekCell = { day: number | null; dateStr: string | null }
   const weekCount = Math.ceil((firstDay + daysInMonth) / 7)
   const weeks: WeekCell[][] = Array.from({ length: weekCount }, (_, w) =>
@@ -547,7 +551,7 @@ export default function CalendarPage() {
 
   type EventLane = { event: CalendarEvent; colStart: number; colEnd: number; isStart: boolean; isEnd: boolean }
 
-  // 週内で予定を重ならないレーンに割り当てる（帯表示用）
+  // 週内で予定を重ならないレーンに割り当てる(帯表示用)
   const getWeekLanes = (week: WeekCell[]): EventLane[][] => {
     const definedIdx = week.map((c, i) => (c.dateStr ? i : -1)).filter(i => i >= 0)
     if (definedIdx.length === 0) return []
@@ -573,7 +577,7 @@ export default function CalendarPage() {
     return lanes
   }
 
-  // 「今月の支出」は精算日（締め日）を基準にした期間で集計する（精算日=1ならカレンダー月と同じ）
+  // 「今月の支出」は精算日(締め日)を基準にした期間で集計する(精算日=1ならカレンダー月と同じ)
   const currentPeriod = getPeriodRange(currentYear, currentMonth, settlementDay)
   const totalExpense = calendarEntries
     .filter(e => isInPeriod(e.date, currentPeriod) && e.type === 'expense')
@@ -589,7 +593,7 @@ export default function CalendarPage() {
 
   const filteredCategories = categories.filter(c => c.type === activeTab)
 
-  // 月内の明細（日付ごとにグルーピング、新しい日付順）。予定はカレンダー上にのみ表示するため明細一覧には含めない
+  // 月内の明細(日付ごとにグルーピング、新しい日付順)。予定はカレンダー上にのみ表示するため明細一覧には含めない
   const monthEntries = calendarEntries.filter(e => e.date.startsWith(monthPrefix))
   const groupDates = Array.from(new Set(monthEntries.map(e => e.date)))
     .sort((a, b) => b.localeCompare(a))
@@ -679,6 +683,8 @@ export default function CalendarPage() {
           warikanDefaults={warikanDefaults}
           pendingCount={pendingFixedCosts.length}
           onAddThisMonth={addThisMonthFixedCosts}
+          addedEntries={fixedCostSourcedEntries}
+          onDeleteEntry={deleteEntry}
         />
       )}
       {activeNav === 'report' && (
@@ -794,16 +800,16 @@ export default function CalendarPage() {
           ))}
         </div>
 
-        {/* 日付セル（週単位：日付 → 予定の帯 → 金額 の順） */}
+        {/* 日付セル(週単位：日付 → 予定の帯 → 金額 の順) */}
         {weeks.map((week, wi) => {
-          // カレンダー上は1週あたり予定を1本だけ表示（重なる分は明細一覧で確認）
+          // カレンダー上は1週あたり予定を1本だけ表示(重なる分は明細一覧で確認)
           const lanes = getWeekLanes(week).slice(0, 1)
           return (
             <div
               key={wi}
               className={`relative pb-1 ${wi > 0 ? 'border-t border-gray-200 dark:border-gray-700' : ''}`}
             >
-              {/* 縦の罫線（予定の帯があっても週全体で途切れないよう別レイヤーで描画） */}
+              {/* 縦の罫線(予定の帯があっても週全体で途切れないよう別レイヤーで描画) */}
               <div className="absolute inset-0 grid grid-cols-7 divide-x divide-gray-200 dark:divide-gray-700 pointer-events-none">
                 {Array.from({ length: 7 }, (_, i) => <div key={i} />)}
               </div>
@@ -836,7 +842,7 @@ export default function CalendarPage() {
                 })}
               </div>
 
-              {/* 予定の帯（一番上）：予定が無い週も高さを揃えるため常に確保 */}
+              {/* 予定の帯(一番上)：予定が無い週も高さを揃えるため常に確保 */}
               <div className="px-1 mb-0.5 h-4">
                 {lanes.map((lane, li) => (
                   <div key={li} className="grid grid-cols-7 gap-x-0.5">
@@ -905,7 +911,7 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* 月内の明細（日付ごとにグルーピング） */}
+      {/* 月内の明細(日付ごとにグルーピング) */}
       <div className="bg-white dark:bg-black divide-y divide-gray-100 dark:divide-gray-800">
         {groupDates.map(dateStr => {
           const [y, m, d] = dateStr.split('-').map(Number)
@@ -919,7 +925,7 @@ export default function CalendarPage() {
             <div key={dateStr} ref={el => { groupRefs.current[dateStr] = el }}>
               <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-900/60">
                 <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                  {y}年{m}月{d}日<span className={`ml-1 font-normal ${dowColor}`}>（{dow}）</span>
+                  {y}年{m}月{d}日<span className={`ml-1 font-normal ${dowColor}`}>({dow})</span>
                 </span>
                 {dayExpense > 0 && (
                   <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
@@ -939,7 +945,7 @@ export default function CalendarPage() {
                     <span className="text-xl flex-shrink-0">{cat?.emoji ?? '📌'}</span>
                     <span className="flex-1 min-w-0 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
                       {cat?.name ?? '未分類'}
-                      {entry.memo && <span className="text-gray-400 dark:text-gray-500 font-normal">　（{entry.memo}）</span>}
+                      {entry.memo && <span className="text-gray-400 dark:text-gray-500 font-normal">　({entry.memo})</span>}
                       {entry.warikan && entry.paidBy && (
                         <span className="ml-1.5 text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-md">
                           {entry.paidBy}
@@ -1061,7 +1067,7 @@ export default function CalendarPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-1">メモ（任意）</label>
+                    <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-1">メモ(任意)</label>
                     <input
                       type="text"
                       placeholder="詳細を入力..."
@@ -1106,7 +1112,7 @@ export default function CalendarPage() {
                     <label className="text-sm font-medium text-gray-600 dark:text-gray-300 w-16 flex-shrink-0">メモ</label>
                     <input
                       type="text"
-                      placeholder="例：スーパー、外食...（任意）"
+                      placeholder="例：スーパー、外食...(任意)"
                       value={memo}
                       onChange={e => setMemo(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') saveEntry() }}
@@ -1184,7 +1190,7 @@ export default function CalendarPage() {
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <label className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                          支払った人（任意）
+                          支払った人(任意)
                         </label>
                         <button
                           type="button"
@@ -1368,7 +1374,7 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* ボトムナビ（ホームインジケーターの safe area 分だけ下に余白を追加） */}
+      {/* ボトムナビ(ホームインジケーターの safe area 分だけ下に余白を追加) */}
       <nav className="fixed bottom-0 inset-x-0 pb-[env(safe-area-inset-bottom)] bg-white/70 dark:bg-black/50 backdrop-blur-xl backdrop-saturate-150 border-t border-black/5 dark:border-white/10 z-20">
         <div className="h-16 flex items-center">
         {([

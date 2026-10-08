@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { Entry, Category } from '../types'
+import { DEFAULT_FIXED_CATEGORIES } from '../types'
 import { getPeriodRange, isInPeriod } from '../../lib/period'
 
 interface Props {
@@ -46,6 +47,17 @@ export default function ReportPage({ entries, categories, onUpdateCategories, se
     .sort((a, b) => b.total - a.total)
 
   const maxExpense = Math.max(...expenseByCategory.map(c => c.total), 1)
+
+  // 固定費から生成された支出(カテゴリIDがf1〜f6)の内訳。固定費カテゴリは編集不可のため予算設定は出さず、発生しているものだけ表示する
+  const fixedCostByCategory = DEFAULT_FIXED_CATEGORIES
+    .map(c => ({
+      ...c,
+      total: monthEntries.filter(e => e.type === 'expense' && e.categoryId === c.id).reduce((s, e) => s + e.amount, 0),
+    }))
+    .filter(c => c.total > 0)
+    .sort((a, b) => b.total - a.total)
+
+  const maxFixedCost = Math.max(...fixedCostByCategory.map(c => c.total), 1)
 
   // 直近6ヶ月のトレンド
   const trend = Array.from({ length: 6 }).map((_, i) => {
@@ -161,6 +173,32 @@ export default function ReportPage({ entries, categories, onUpdateCategories, se
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* 固定費の内訳(今月分として追加済みのもの) */}
+      {fixedCostByCategory.length > 0 && (
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">固定費の内訳</p>
+          <div className="space-y-3">
+            {fixedCostByCategory.map(c => (
+              <div key={c.id}>
+                <div className="flex items-center justify-between mb-1 gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-base leading-none flex-shrink-0">{c.emoji}</span>
+                    <span className="text-xs text-gray-600 dark:text-gray-300 truncate">{c.name}</span>
+                  </div>
+                  <span className="text-xs font-semibold text-red-500 flex-shrink-0">¥{c.total.toLocaleString()}</span>
+                </div>
+                <div className="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-red-400 dark:bg-red-500"
+                    style={{ width: `${(c.total / maxFixedCost) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

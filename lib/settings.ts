@@ -1,6 +1,6 @@
 import type { WarikanSplitMethod } from '../app/types'
 
-// 割り勘のデフォルト設定。ルームのデータではなく端末（ユーザー）ごとのローカル設定として保存する
+// 割り勘のデフォルト設定。ルームのデータではなく端末(ユーザー)ごとのローカル設定として保存する
 export interface WarikanDefaults {
   defaultOn: boolean // 支出・収入の入力時に割り勘トグルを最初からONにする
   splitMethod: WarikanSplitMethod

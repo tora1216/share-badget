@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import type { FixedCost, WarikanSplitMethod } from '../types'
+import type { Entry, FixedCost, WarikanSplitMethod } from '../types'
 import { DEFAULT_FIXED_CATEGORIES } from '../types'
 import { splitEqual, splitByRatio } from '../../lib/warikan'
 import type { WarikanDefaults } from '../../lib/settings'
@@ -14,9 +14,11 @@ interface Props {
   warikanDefaults: WarikanDefaults
   pendingCount: number
   onAddThisMonth: () => void
+  addedEntries: Entry[]
+  onDeleteEntry: (id: string) => void
 }
 
-export default function ManagePage({ fixedCosts, onUpdate, members, displayName, warikanDefaults, pendingCount, onAddThisMonth }: Props) {
+export default function ManagePage({ fixedCosts, onUpdate, members, displayName, warikanDefaults, pendingCount, onAddThisMonth, addedEntries, onDeleteEntry }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [amount, setAmount] = useState('')
   const [categoryId, setCategoryId] = useState(DEFAULT_FIXED_CATEGORIES[0]?.id ?? '')
@@ -149,6 +151,11 @@ export default function ManagePage({ fixedCosts, onUpdate, members, displayName,
     onUpdate(fixedCosts.filter(f => f.id !== id))
   }
 
+  const deleteAddedEntry = (id: string) => {
+    if (!confirm('固定費として追加したこの支出を取り消しますか？')) return
+    onDeleteEntry(id)
+  }
+
   return (
     <div className="flex flex-col">
       {/* サマリーカード */}
@@ -172,6 +179,35 @@ export default function ManagePage({ fixedCosts, onUpdate, members, displayName,
             '今月分は追加済みです'
           )}
         </button>
+
+        {addedEntries.length > 0 && (
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm divide-y divide-gray-50 dark:divide-gray-800 overflow-hidden">
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 px-3 pt-2 pb-1">固定費として追加済みの支出(元の固定費を削除済みのものも含む)</p>
+            {addedEntries.map(entry => {
+              const cat = findCategory(entry.categoryId)
+              return (
+                <div key={entry.id} className="flex items-center gap-3 px-3 py-2">
+                  <span className="text-lg flex-shrink-0">{cat?.emoji ?? '📌'}</span>
+                  <span className="flex-1 min-w-0 text-sm text-gray-700 dark:text-gray-300 truncate">
+                    <span className="text-gray-400 dark:text-gray-500">{entry.date.slice(5).replace('-', '/')}　</span>
+                    {cat?.name ?? '未分類'}
+                    {entry.memo && <span className="text-gray-400 dark:text-gray-500">　({entry.memo})</span>}
+                  </span>
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 flex-shrink-0">
+                    {entry.amount.toLocaleString()}円
+                  </span>
+                  <button
+                    onClick={() => deleteAddedEntry(entry.id)}
+                    className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-red-100 dark:hover:bg-red-900/50 text-gray-400 hover:text-red-500 transition-colors text-xs"
+                    aria-label="追加を取り消す"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* リスト */}
@@ -194,7 +230,7 @@ export default function ManagePage({ fixedCosts, onUpdate, members, displayName,
                   <span className="text-xl flex-shrink-0">{cat?.emoji ?? '📌'}</span>
                   <span className="flex-1 min-w-0 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
                     {cat?.name ?? '未分類'}
-                    {item.memo && <span className="text-gray-400 dark:text-gray-500 font-normal">　（{item.memo}）</span>}
+                    {item.memo && <span className="text-gray-400 dark:text-gray-500 font-normal">　({item.memo})</span>}
                     {item.warikan && item.paidBy && (
                       <span className="ml-1.5 text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-md">
                         {item.paidBy}
@@ -253,7 +289,7 @@ export default function ManagePage({ fixedCosts, onUpdate, members, displayName,
                 <label className="text-sm font-medium text-gray-600 dark:text-gray-300 w-16 flex-shrink-0">メモ</label>
                 <input
                   type="text"
-                  placeholder="例：家賃、サブスク...（任意）"
+                  placeholder="例：家賃、サブスク...(任意)"
                   value={memo}
                   onChange={e => setMemo(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') saveFixedCost() }}
@@ -311,7 +347,7 @@ export default function ManagePage({ fixedCosts, onUpdate, members, displayName,
                     {/* 支払った人 */}
                     <div>
                       <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-2">
-                        支払った人（任意）
+                        支払った人(任意)
                       </label>
                       {warikanParticipants.length > 0 ? (
                         <div className="flex flex-wrap gap-2">

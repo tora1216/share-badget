@@ -147,7 +147,7 @@ export default function SettingsInfoModal({
             </div>
             <ol className="space-y-1.5">
               {[
-                '画面下部の共有ボタン（□↑）をタップ',
+                '画面下部の共有ボタン(□↑)をタップ',
                 '「ホーム画面に追加」を選択',
                 '「追加」をタップして完了',
               ].map((step, i) => (
@@ -286,7 +286,7 @@ export default function SettingsInfoModal({
                     className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
                   >
                     {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
-                      <option key={d} value={d}>{d === 31 ? '31日（月末）' : `${d}日`}締め</option>
+                      <option key={d} value={d}>{d === 31 ? '31日(月末)' : `${d}日`}締め</option>
                     ))}
                   </select>
                 </div>
@@ -407,7 +407,7 @@ export default function SettingsInfoModal({
             )}
           </div>
 
-          {/* 家計簿設定（この端末だけのローカル設定） */}
+          {/* 家計簿設定(この端末だけのローカル設定) */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
             <button
               type="button"

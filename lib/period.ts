@@ -1,6 +1,6 @@
-// 精算日（1〜31）を基準にした集計期間を計算する。
-// 「(精算日+1)日 前月 〜 精算日 当月」を1つの期間として扱う（例: 精算日=25 の「3月」は 2/26〜3/25）。
-// 精算日がその月の実際の日数を超える場合（31日を選んでいて2月など）は、その月の末日に丸める。
+// 精算日(1〜31)を基準にした集計期間を計算する。
+// 「(精算日+1)日 前月 〜 精算日 当月」を1つの期間として扱う(例: 精算日=25 の「3月」は 2/26〜3/25)。
+// 精算日がその月の実際の日数を超える場合(31日を選んでいて2月など)は、その月の末日に丸める。
 // デフォルトの31日は常に丸められるため、結果的に「毎月1日〜末日」のカレンダー通りの区切りになる。
 export interface PeriodRange {
   start: string // YYYY-MM-DD
@@ -37,7 +37,7 @@ export function isInPeriod(dateStr: string, range: PeriodRange): boolean {
   return dateStr >= range.start && dateStr <= range.end
 }
 
-// 日付がどの「年月」の集計期間に属するかを "YYYY-MM" 形式で返す（getPeriodRange の逆引き）
+// 日付がどの「年月」の集計期間に属するかを "YYYY-MM" 形式で返す(getPeriodRange の逆引き)
 export function getPeriodKey(dateStr: string, settlementDay: number): string {
   const [y, m, d] = dateStr.split('-').map(Number)
   const pad = (n: number) => String(n).padStart(2, '0')
