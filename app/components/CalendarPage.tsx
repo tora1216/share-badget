@@ -462,6 +462,17 @@ export default function CalendarPage() {
     if (newSettlements.length > 0) writeGroupData('settlements', [...settlements, ...newSettlements])
   }
 
+  // 精算履歴の記録ミスを修正・取り消しできるようにする(対象の支出の精算済み状態には影響しない)
+  const updateSettlement = (id: string, fields: Pick<Settlement, 'date' | 'from' | 'to' | 'amount'>) => {
+    const updated = settlements.map(s => (s.id === id ? { ...s, ...fields } : s))
+    writeGroupData('settlements', updated)
+  }
+
+  const deleteSettlement = (id: string) => {
+    const updated = settlements.filter(s => s.id !== id)
+    writeGroupData('settlements', updated)
+  }
+
   const deleteFromDialog = () => {
     if (!confirm('削除しますか？')) return
     if (editingEntryId) deleteEntry(editingEntryId)
@@ -698,9 +709,12 @@ export default function CalendarPage() {
           categories={categories}
           settlementDay={settlementDay}
           settlements={settlements}
+          members={members}
           onToggleSettled={toggleEntrySettled}
           onSettlePeriod={settlePeriod}
           onOpenEntry={openEditEntry}
+          onUpdateSettlement={updateSettlement}
+          onDeleteSettlement={deleteSettlement}
         />
       )}
       {activeNav === 'todo' && (

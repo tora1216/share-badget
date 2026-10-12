@@ -36,17 +36,16 @@ export default function ManagePage({ entries, onOpenEntry, onAddNew, onCopyToMon
 
   const totalExpense = monthEntries.reduce((s, e) => s + e.amount, 0)
 
-  // 各繰り返し(fixedCostId)でもっとも新しい支出をコピー元の候補にする。表示中の月に既にあるものは除く
+  // 先月の固定費をコピー元の候補にする。表示中の月に既に同じ繰り返しがあるものは除く
+  let prevYearForCopy = year
+  let prevMonthIndexForCopy = month - 1
+  if (prevMonthIndexForCopy < 0) { prevMonthIndexForCopy = 11; prevYearForCopy -= 1 }
+  const prevMonthPrefix = `${prevYearForCopy}-${String(prevMonthIndexForCopy + 1).padStart(2, '0')}`
+
   const monthSeriesIds = new Set(monthEntries.map(e => e.fixedCostId))
-  const latestBySeriesId = new Map<string, Entry>()
-  for (const e of entries) {
-    if (!isFixedCostEntry(e) || e.type !== 'expense') continue
-    const current = latestBySeriesId.get(e.fixedCostId!)
-    if (!current || e.date > current.date) latestBySeriesId.set(e.fixedCostId!, e)
-  }
-  const copyCandidates = Array.from(latestBySeriesId.values())
-    .filter(e => !monthSeriesIds.has(e.fixedCostId) && e.date < `${monthPrefix}-01`)
-    .sort((a, b) => b.date.localeCompare(a.date))
+  const copyCandidates = entries
+    .filter(e => isFixedCostEntry(e) && e.type === 'expense' && e.date.startsWith(prevMonthPrefix) && !monthSeriesIds.has(e.fixedCostId))
+    .sort((a, b) => a.date.localeCompare(b.date))
 
   const openCopyDialog = () => {
     setActionSheetOpen(false)
@@ -175,9 +174,9 @@ export default function ManagePage({ entries, onOpenEntry, onAddNew, onCopyToMon
               >
                 <span className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-500 text-xl">📋</span>
                 <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-medium text-gray-800 dark:text-gray-100">コピーして追加</span>
+                  <span className="block text-sm font-medium text-gray-800 dark:text-gray-100">先月からコピーして追加</span>
                   <span className="block text-xs text-gray-400 dark:text-gray-500">
-                    {copyCandidates.length > 0 ? `${copyCandidates.length}件の候補から選んで複製` : '候補がありません'}
+                    {copyCandidates.length > 0 ? `${copyCandidates.length}件の候補から選んで複製` : '先月分の固定費がありません'}
                   </span>
                 </span>
               </button>
