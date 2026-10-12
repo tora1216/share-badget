@@ -12,14 +12,16 @@ interface Props {
   members: string[]
   displayName: string
   warikanDefaults: WarikanDefaults
-  pendingCount: number
-  onAddThisMonth: () => void
+  pendingFixedCosts: FixedCost[]
+  onAddThisMonth: (selectedIds: string[]) => void
   addedEntries: Entry[]
   onDeleteEntry: (id: string) => void
 }
 
-export default function ManagePage({ fixedCosts, onUpdate, members, displayName, warikanDefaults, pendingCount, onAddThisMonth, addedEntries, onDeleteEntry }: Props) {
+export default function ManagePage({ fixedCosts, onUpdate, members, displayName, warikanDefaults, pendingFixedCosts, onAddThisMonth, addedEntries, onDeleteEntry }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [amount, setAmount] = useState('')
   const [categoryId, setCategoryId] = useState(DEFAULT_FIXED_CATEGORIES[0]?.id ?? '')
   const [memo, setMemo] = useState('')
@@ -156,6 +158,20 @@ export default function ManagePage({ fixedCosts, onUpdate, members, displayName,
     onDeleteEntry(id)
   }
 
+  const openAddThisMonthDialog = () => {
+    setSelectedIds(pendingFixedCosts.map(f => f.id))
+    setAddDialogOpen(true)
+  }
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => (prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]))
+  }
+
+  const confirmAddThisMonth = () => {
+    onAddThisMonth(selectedIds)
+    setAddDialogOpen(false)
+  }
+
   return (
     <div className="flex flex-col">
       {/* サマリーカード */}
@@ -166,14 +182,14 @@ export default function ManagePage({ fixedCosts, onUpdate, members, displayName,
         </div>
         <button
           type="button"
-          onClick={onAddThisMonth}
-          disabled={pendingCount === 0}
+          onClick={openAddThisMonthDialog}
+          disabled={pendingFixedCosts.length === 0}
           className="w-full py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-400 text-white font-medium text-sm transition-colors flex items-center justify-center gap-1.5"
         >
-          {pendingCount > 0 ? (
+          {pendingFixedCosts.length > 0 ? (
             <>
               今月分を支出に追加
-              <span className="bg-white/25 rounded-full px-1.5 text-xs font-bold">{pendingCount}</span>
+              <span className="bg-white/25 rounded-full px-1.5 text-xs font-bold">{pendingFixedCosts.length}</span>
             </>
           ) : (
             '今月分は追加済みです'
@@ -483,6 +499,70 @@ export default function ManagePage({ fixedCosts, onUpdate, members, displayName,
                   {editingId ? '保存' : '追加'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 今月分追加ダイアログ：今月まだ追加していない固定費から、追加するものだけ選ぶ */}
+      {addDialogOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-end justify-center z-30"
+          onClick={e => { if (e.target === e.currentTarget) setAddDialogOpen(false) }}
+        >
+          <div className="bg-white dark:bg-gray-900 rounded-t-2xl w-full max-w-lg px-6 pt-5 pb-10 shadow-xl max-h-[85vh] overflow-y-auto">
+            <div className="w-10 h-1 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-4" />
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-4">今月分に追加する固定費を選択</p>
+
+            <div className="space-y-2 mb-6">
+              {pendingFixedCosts.map(f => {
+                const cat = findCategory(f.categoryId)
+                const checked = selectedIds.includes(f.id)
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => toggleSelected(f.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors ${
+                      checked
+                        ? 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/30'
+                        : 'border-gray-200 dark:border-gray-700'
+                    }`}
+                  >
+                    <span className={`w-5 h-5 flex-shrink-0 rounded-md border flex items-center justify-center text-xs ${
+                      checked
+                        ? 'bg-blue-500 border-blue-500 text-white'
+                        : 'border-gray-300 dark:border-gray-600 text-transparent'
+                    }`}>
+                      ✓
+                    </span>
+                    <span className="text-xl flex-shrink-0">{cat?.emoji ?? '📌'}</span>
+                    <span className="flex-1 min-w-0 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+                      {cat?.name ?? '未分類'}
+                      {f.memo && <span className="text-gray-400 dark:text-gray-500 font-normal">　({f.memo})</span>}
+                    </span>
+                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 flex-shrink-0">
+                      {f.amount.toLocaleString()}円
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setAddDialogOpen(false)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-medium text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={confirmAddThisMonth}
+                disabled={selectedIds.length === 0}
+                className="flex-1 py-3 rounded-xl font-medium text-sm transition-colors text-white bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400"
+              >
+                追加({selectedIds.length})
+              </button>
             </div>
           </div>
         </div>

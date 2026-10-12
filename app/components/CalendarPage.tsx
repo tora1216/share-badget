@@ -351,11 +351,12 @@ export default function CalendarPage() {
     .filter(e => e.fixedCostId)
     .sort((a, b) => b.date.localeCompare(a.date))
 
-  // ボタン操作で、今月分の固定費をまとめて支出として追加する
-  const addThisMonthFixedCosts = () => {
-    if (pendingFixedCosts.length === 0) return
+  // 選択した固定費だけを今月分の支出として追加する
+  const addThisMonthFixedCosts = (selectedIds: string[]) => {
+    const selected = pendingFixedCosts.filter(f => selectedIds.includes(f.id))
+    if (selected.length === 0) return
     const dateStr = `${thisMonthPrefix}-01`
-    const newEntries: Entry[] = pendingFixedCosts.map(f => ({
+    const newEntries: Entry[] = selected.map(f => ({
       id: `${Date.now()}-${f.id}`,
       date: dateStr,
       amount: f.amount,
@@ -681,7 +682,7 @@ export default function CalendarPage() {
           members={members}
           displayName={myDisplayName}
           warikanDefaults={warikanDefaults}
-          pendingCount={pendingFixedCosts.length}
+          pendingFixedCosts={pendingFixedCosts}
           onAddThisMonth={addThisMonthFixedCosts}
           addedEntries={fixedCostSourcedEntries}
           onDeleteEntry={deleteEntry}
