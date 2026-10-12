@@ -1,4 +1,4 @@
-export const APP_VERSION = "2.2.0";
+export const APP_VERSION = "2.3.0";
 
 export type ChangelogEntry = {
   version: string;
@@ -8,6 +8,17 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "2.3.0",
+    date: "2026-10-13",
+    title: "固定費・精算を月ごとの管理に再設計",
+    changes: [
+      "固定費を「テンプレート管理」から「月ごとの繰り返し支出」に再設計。",
+      "レポートに固定費のカテゴリ別内訳を追加",
+      "割り勘(精算)タブも月ごとのページ表示に変更し、精算時に「誰が誰にいくら払ったか」を記録として残し、精算履歴を確認できるように変更",
+      "支出一覧の行レイアウトを見直し、精算ステータスを小さいアイコンにして支払った人が隠れないように修正",
+    ],
+  },
   {
     version: "2.2.0",
     date: "2026-10-08",

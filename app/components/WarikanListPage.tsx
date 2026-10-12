@@ -1,145 +1,130 @@
 'use client'
 
-import type { Entry, Category } from '../types'
+import { useState } from 'react'
+import type { Entry, Category, Settlement } from '../types'
+import { DEFAULT_FIXED_CATEGORIES } from '../types'
 import { computeSettlementSummary } from '../../lib/warikan'
-import { getPeriodKey, getPeriodRange } from '../../lib/period'
+import { getPeriodRange, isInPeriod } from '../../lib/period'
 
 interface Props {
   entries: Entry[]
   categories: Category[]
   settlementDay: number
+  settlements: Settlement[]
   onToggleSettled: (id: string) => void
-  onSettlePeriod: (start: string, end: string) => void
+  onSettlePeriod: (start: string, end: string, periodKey: string) => void
   onOpenEntry: (entry: Entry) => void
 }
 
-export default function WarikanListPage({ entries, categories, settlementDay, onToggleSettled, onSettlePeriod, onOpenEntry }: Props) {
-  const warikanEntries = entries
-    .filter(e => e.warikan)
+export default function WarikanListPage({ entries, categories, settlementDay, settlements, onToggleSettled, onSettlePeriod, onOpenEntry }: Props) {
+  // 固定費から生成された支出は固定費専用のカテゴリ(f1〜f6)を使うため、通常のカテゴリ一覧と合わせて探す
+  const findCategory = (categoryId: string) =>
+    categories.find(c => c.id === categoryId) ?? DEFAULT_FIXED_CATEGORIES.find(c => c.id === categoryId)
+
+  const today = new Date()
+  const [year, setYear] = useState(today.getFullYear())
+  const [month, setMonth] = useState(today.getMonth())
+
+  const period = getPeriodRange(year, month, settlementDay)
+  const periodKey = `${year}-${String(month + 1).padStart(2, '0')}`
+
+  const prevMonth = () => {
+    if (month === 0) { setMonth(11); setYear(y => y - 1) } else setMonth(m => m - 1)
+  }
+  const nextMonth = () => {
+    if (month === 11) { setMonth(0); setYear(y => y + 1) } else setMonth(m => m + 1)
+  }
+
+  const periodEntries = entries
+    .filter(e => e.warikan && isInPeriod(e.date, period))
     .sort((a, b) => b.date.localeCompare(a.date))
 
-  const unsettled = warikanEntries.filter(e => !e.warikanSettled)
+  const settled = periodEntries.filter(e => e.warikanSettled)
+  const unsettled = periodEntries.filter(e => !e.warikanSettled)
   const unsettledTotal = unsettled.reduce((s, e) => s + e.amount, 0)
   const transfers = computeSettlementSummary(unsettled)
+  // 一度精算した月に、後から未精算の支出が追加された場合に目立たせる
+  const isAddOn = settled.length > 0 && unsettled.length > 0
 
-  // 月(精算日基準の期間)ごとにグループ化。同じ月に精算済みと未精算が混ざる場合は
-  // 未精算分を「追加分(精算後に追加)」として目立たせる
-  const periodGroups = (() => {
-    const map = new Map<string, Entry[]>()
-    for (const e of warikanEntries) {
-      const key = getPeriodKey(e.date, settlementDay)
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(e)
-    }
-    return Array.from(map.entries())
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([key, list]) => {
-        const [y, m] = key.split('-').map(Number)
-        const range = getPeriodRange(y, m - 1, settlementDay)
-        return {
-          key,
-          label: `${y}年${m}月分`,
-          range,
-          settled: list.filter(e => e.warikanSettled),
-          unsettled: list.filter(e => !e.warikanSettled),
-        }
-      })
-  })()
+  const periodSettlements = settlements
+    .filter(s => s.periodKey === periodKey)
+    .sort((a, b) => b.date.localeCompare(a.date))
+
+  const handleSettle = () => {
+    if (unsettled.length === 0) return
+    if (!confirm(`${year}年${month + 1}月分の未精算(¥${unsettledTotal.toLocaleString()})を精算済みにしますか？`)) return
+    onSettlePeriod(period.start, period.end, periodKey)
+  }
 
   const renderRow = (entry: Entry) => {
-    const cat = categories.find(c => c.id === entry.categoryId)
+    const cat = findCategory(entry.categoryId)
     const [, m, d] = entry.date.split('-').map(Number)
     return (
       <div
         key={entry.id}
         className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-900"
       >
-        <button onClick={() => onOpenEntry(entry)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+        <button onClick={() => onOpenEntry(entry)} className="flex items-start gap-3 flex-1 min-w-0 text-left">
           <span className="text-xl flex-shrink-0">{cat?.emoji ?? '📌'}</span>
-          <span className="flex-1 min-w-0 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
-            {cat?.name ?? '未分類'}
-            {entry.memo && <span className="text-gray-400 dark:text-gray-500 font-normal">　({entry.memo})</span>}
-            <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{m}/{d}</span>
-            {entry.paidBy && (
-              <span className="ml-1.5 text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-md">
-                {entry.paidBy}
-              </span>
-            )}
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+              {cat?.name ?? '未分類'}
+              {entry.memo && <span className="text-gray-400 dark:text-gray-500 font-normal"> ({entry.memo})</span>}
+            </span>
+            <span className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{m}/{d}</span>
+              {entry.paidBy && (
+                <span className="text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-md truncate">
+                  {entry.paidBy}
+                </span>
+              )}
+            </span>
           </span>
         </button>
-        <span className="text-base font-bold text-gray-800 dark:text-gray-100 flex-shrink-0">
-          {entry.amount.toLocaleString()}円
-        </span>
-        <button
-          onClick={() => onToggleSettled(entry.id)}
-          className={`flex-shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-full transition-colors ${
-            entry.warikanSettled
-              ? 'bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/60'
-              : 'bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-900/60'
-          }`}
-        >
-          {entry.warikanSettled ? '精算済み' : '未精算'}
-        </button>
-      </div>
-    )
-  }
-
-  const formatShortDate = (dateStr: string) => {
-    const [, m, d] = dateStr.split('-').map(Number)
-    return `${m}/${d}`
-  }
-
-  const renderGroup = (group: (typeof periodGroups)[number]) => {
-    const isAddOn = group.settled.length > 0 && group.unsettled.length > 0
-    return (
-      <div
-        key={group.key}
-        className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden"
-      >
-        <div className="px-4 pt-4 pb-2 flex items-baseline gap-1.5">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{group.label}</p>
-          {settlementDay !== 31 && (
-            <p className="text-[11px] text-gray-400 dark:text-gray-500">
-              ({formatShortDate(group.range.start)}〜{formatShortDate(group.range.end)})
-            </p>
-          )}
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          <span className="text-sm font-bold text-gray-800 dark:text-gray-100">
+            {entry.amount.toLocaleString()}円
+          </span>
+          <button
+            onClick={() => onToggleSettled(entry.id)}
+            className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors ${
+              entry.warikanSettled
+                ? 'bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/60'
+                : 'bg-orange-100 dark:bg-orange-900/40 text-orange-500 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-900/60'
+            }`}
+            aria-label={entry.warikanSettled ? '精算済み(タップで未精算に戻す)' : '未精算(タップで精算済みにする)'}
+          >
+            {entry.warikanSettled ? '✓' : '!'}
+          </button>
         </div>
-
-        {group.settled.length > 0 && (
-          <div className="divide-y divide-gray-50 dark:divide-gray-800">
-            {group.settled.map(renderRow)}
-          </div>
-        )}
-
-        {group.unsettled.length > 0 && (
-          <div className={isAddOn ? 'bg-orange-50/60 dark:bg-orange-950/20 border-t border-orange-100 dark:border-orange-900/40' : ''}>
-            <div className="flex items-center justify-between px-4 py-2">
-              <span className={`text-xs font-semibold ${isAddOn ? 'text-orange-600 dark:text-orange-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                {isAddOn ? '追加分(精算後に追加)' : '未精算'}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm(`${group.label}の${isAddOn ? '追加分' : '未精算分'}をまとめて精算済みにしますか？`)) {
-                    onSettlePeriod(group.range.start, group.range.end)
-                  }
-                }}
-                className="text-xs font-medium text-blue-500 hover:underline"
-              >
-                まとめて精算済みにする
-              </button>
-            </div>
-            <div className="divide-y divide-gray-50 dark:divide-gray-800">
-              {group.unsettled.map(renderRow)}
-            </div>
-          </div>
-        )}
       </div>
     )
   }
 
   return (
     <div className="flex flex-col gap-4 px-4 pt-4 pb-4">
+      {/* 月切替 */}
+      <div className="flex items-center justify-between bg-white dark:bg-gray-900 rounded-2xl px-4 py-3 border border-gray-100 dark:border-gray-800 shadow-sm">
+        <button
+          onClick={prevMonth}
+          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-2xl text-gray-600 dark:text-gray-300"
+        >
+          ‹
+        </button>
+        <div className="text-center">
+          <span className="font-semibold text-gray-800 dark:text-gray-100">{year}年{month + 1}月分</span>
+          {settlementDay !== 31 && (
+            <p className="text-[10px] text-gray-400 dark:text-gray-500">{period.start.replaceAll('-', '/')} 〜 {period.end.replaceAll('-', '/')}</p>
+          )}
+        </div>
+        <button
+          onClick={nextMonth}
+          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-2xl text-gray-600 dark:text-gray-300"
+        >
+          ›
+        </button>
+      </div>
+
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 flex items-center justify-between">
         <div>
           <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">未精算の合計</p>
@@ -148,38 +133,87 @@ export default function WarikanListPage({ entries, categories, settlementDay, on
         <span className="text-3xl">💸</span>
       </div>
 
-      {transfers.length > 0 ? (
+      {unsettled.length > 0 ? (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">精算サマリー(これだけ払えばOK)</p>
-          <div className="space-y-2">
-            {transfers.map((t, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2.5"
-              >
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{t.from}</span>
-                <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">→</span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{t.to}</span>
-                <span className="ml-auto text-sm font-bold text-gray-800 dark:text-gray-100 flex-shrink-0">
-                  ¥{t.amount.toLocaleString()}
-                </span>
-              </div>
-            ))}
-          </div>
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">精算サマリー(タップで精算済みにする)</p>
+          {transfers.length > 0 ? (
+            <div className="space-y-2">
+              {transfers.map((t, i) => (
+                <button
+                  key={i}
+                  onClick={handleSettle}
+                  className="w-full flex items-center gap-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg px-3 py-2.5 transition-colors text-left"
+                >
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{t.from}</span>
+                  <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">→</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{t.to}</span>
+                  <span className="ml-auto text-sm font-bold text-gray-800 dark:text-gray-100 flex-shrink-0">
+                    ¥{t.amount.toLocaleString()}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <button
+              onClick={handleSettle}
+              className="w-full py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-medium text-sm transition-colors"
+            >
+              未精算(¥{unsettledTotal.toLocaleString()})を精算済みにする
+            </button>
+          )}
         </div>
-      ) : unsettled.length === 0 && warikanEntries.length > 0 && (
+      ) : periodEntries.length > 0 && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 flex items-center gap-3">
           <span className="text-2xl flex-shrink-0">🎉</span>
-          <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">精算完了！未精算の支出はありません</p>
+          <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">精算完了！この月の未精算の支出はありません</p>
         </div>
       )}
 
-      {periodGroups.map(renderGroup)}
+      {periodSettlements.length > 0 && (
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">精算履歴</p>
+          <div className="space-y-2">
+            {periodSettlements.map(s => {
+              const [, m, d] = s.date.split('-').map(Number)
+              return (
+                <div key={s.id} className="flex items-center gap-2 text-sm">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{m}/{d}</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-200 truncate">{s.from}</span>
+                  <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">→</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-200 truncate">{s.to}</span>
+                  <span className="ml-auto font-bold text-gray-800 dark:text-gray-100 flex-shrink-0">¥{s.amount.toLocaleString()}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
-      {warikanEntries.length === 0 && (
+      {periodEntries.length > 0 ? (
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+          {settled.length > 0 && (
+            <div className="divide-y divide-gray-50 dark:divide-gray-800">
+              {settled.map(renderRow)}
+            </div>
+          )}
+
+          {unsettled.length > 0 && (
+            <div className={isAddOn ? 'bg-orange-50/60 dark:bg-orange-950/20 border-t border-orange-100 dark:border-orange-900/40' : ''}>
+              <div className="px-4 py-2">
+                <span className={`text-xs font-semibold ${isAddOn ? 'text-orange-600 dark:text-orange-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                  {isAddOn ? '追加分(精算後に追加)' : '未精算'}
+                </span>
+              </div>
+              <div className="divide-y divide-gray-50 dark:divide-gray-800">
+                {unsettled.map(renderRow)}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
         <div className="flex flex-col items-center py-10 text-gray-400 dark:text-gray-600">
           <span className="text-4xl mb-2">💸</span>
-          <p className="text-sm">割り勘した支出はまだありません</p>
+          <p className="text-sm">この月は割り勘した支出がありません</p>
         </div>
       )}
     </div>

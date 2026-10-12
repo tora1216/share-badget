@@ -95,9 +95,9 @@ export default function RoomGate({ currentUser, defaultNickname, onDone, onCance
       if (!isAdopting) {
         writes.push(
           setDoc(entriesRef, { items: [] }),
+          setDoc(doc(db, 'groups', groupId, 'data', 'settlements'), { items: [] }),
           setDoc(doc(db, 'groups', groupId, 'data', 'categories'), { items: DEFAULT_CATEGORIES }),
           setDoc(doc(db, 'groups', groupId, 'data', 'participants'), { items: [participant] }),
-          setDoc(doc(db, 'groups', groupId, 'data', 'fixedCosts'), { items: [] }),
           setDoc(doc(db, 'groups', groupId, 'data', 'events'), { items: [] }),
           setDoc(doc(db, 'groups', groupId, 'data', 'todos'), { items: [] }),
         )

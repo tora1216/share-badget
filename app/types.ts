@@ -30,21 +30,19 @@ export interface Entry {
   warikanSplitMethod?: WarikanSplitMethod
   warikanSplits?: Record<string, number>
   createdBy?: string
-  fixedCostId?: string // 固定費から毎月自動生成された支出の場合、元の固定費のid
+  // 固定費としてマークされた支出が属する「同じ繰り返しのまとまり」のid。新規作成時は自分自身のidを設定し、
+  // 別の月へコピーした際はそのまま引き継ぐことで、「もうこの月に追加済みか」を判定できるようにする
+  fixedCostId?: string
 }
 
-export interface FixedCost {
+// 割り勘の精算記録(誰が誰にいくら払ったかのログ)。期間のまとめて精算から自動生成される
+export interface Settlement {
   id: string
+  date: string // YYYY-MM-DD 実際に精算した日
+  from: string
+  to: string
   amount: number
-  type: 'expense' | 'income'
-  categoryId: string
-  memo?: string
-  warikan?: boolean
-  paidBy?: string
-  warikanParticipants?: string[]
-  warikanSplitMethod?: WarikanSplitMethod
-  warikanSplits?: Record<string, number>
-  createdBy?: string
+  periodKey: string // YYYY-MM。どの精算期間の分かを表す
 }
 
 export interface CalendarEvent {
