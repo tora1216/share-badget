@@ -8,6 +8,7 @@ import { DEFAULT_CATEGORIES, DEFAULT_FIXED_CATEGORIES, EVENT_COLORS } from '../t
 import { splitEqual, splitByRatio, computeSettlementSummary } from '../../lib/warikan'
 import { getPeriodRange, isInPeriod } from '../../lib/period'
 import { isFixedCostEntry } from '../../lib/fixedCost'
+import { getMemoSuggestions } from '../../lib/memoSuggestions'
 import { db, auth } from '../../lib/firebase'
 import { generateInviteCode, type UserRooms } from '../../lib/rooms'
 import { getWarikanDefaults, setWarikanDefaults as persistWarikanDefaults, DEFAULT_WARIKAN_DEFAULTS, type WarikanDefaults } from '../../lib/settings'
@@ -600,6 +601,10 @@ export default function CalendarPage() {
 
   const filteredCategories = (isFixedCost ? DEFAULT_FIXED_CATEGORIES : categories).filter(c => c.type === activeTab)
 
+  const memoSuggestions = dialogOpen && activeTab !== 'event'
+    ? getMemoSuggestions(entries, { categoryId, fixedCost: isFixedCost, query: memo, excludeEntryId: editingEntryId })
+    : []
+
   // 月内の明細(日付ごとにグルーピング、新しい日付順)。予定はカレンダー上にのみ表示するため明細一覧には含めない
   const monthEntries = calendarEntries.filter(e => e.date.startsWith(monthPrefix))
   const groupDates = Array.from(new Set(monthEntries.map(e => e.date)))
@@ -1125,6 +1130,20 @@ export default function CalendarPage() {
                       className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
                     />
                   </div>
+                  {memoSuggestions.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pl-[76px] -mt-2">
+                      {memoSuggestions.map(s => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setMemo(s)}
+                          className="max-w-full truncate px-2.5 py-1 rounded-full text-xs bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   <div>
                     <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-2">カテゴリ</label>

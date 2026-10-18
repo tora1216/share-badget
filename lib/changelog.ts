@@ -1,4 +1,4 @@
-export const APP_VERSION = "2.3.0";
+export const APP_VERSION = "2.4.0";
 
 export type ChangelogEntry = {
   version: string;
@@ -8,6 +8,17 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "2.4.0",
+    date: "2026-10-18",
+    title: "メモの入力候補・カテゴリの並べ替えを追加",
+    changes: [
+      "メモ入力時に、同じカテゴリで過去に使ったメモを候補として表示し、タップで入力できるように変更",
+      "設定画面のカテゴリを上下の矢印で並べ替えられるように変更(入力画面の表示順にも反映)",
+      "入力画面のカテゴリを横5列表示に変更",
+      "入力画面の固定費トグルを削除し、固定費は固定費タブからのみ追加する形に変更",
+    ],
+  },
   {
     version: "2.3.0",
     date: "2026-10-13",
