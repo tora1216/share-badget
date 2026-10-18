@@ -72,6 +72,15 @@ export default function SettingsInfoModal({
     onUpdateCategories(categories.filter(c => c.id !== id))
   }
 
+  // 隣のカテゴリと入れ替えて並び順を変える。入力画面のカテゴリもこの順で表示される
+  const moveCategory = (index: number, delta: -1 | 1) => {
+    const target = index + delta
+    if (target < 0 || target >= categories.length) return
+    const next = [...categories]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    onUpdateCategories(next)
+  }
+
   const startEditCategory = (c: Category) => {
     setEditingCategoryId(c.id)
     setEditEmoji(c.emoji)
@@ -315,7 +324,7 @@ export default function SettingsInfoModal({
                   <p className="text-sm text-gray-400 text-center py-4">カテゴリがありません</p>
                 )}
                 <div className="space-y-2">
-                  {categories.map(c => (
+                  {categories.map((c, i) => (
                     <div
                       key={c.id}
                       className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
@@ -355,6 +364,24 @@ export default function SettingsInfoModal({
                         </>
                       ) : (
                         <>
+                          <div className="flex flex-col flex-shrink-0 -my-1">
+                            <button
+                              onClick={() => moveCategory(i, -1)}
+                              disabled={i === 0}
+                              className="w-6 h-5 flex items-center justify-center rounded text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/40 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400 transition-colors"
+                              aria-label={`${c.name}を上へ移動`}
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                            </button>
+                            <button
+                              onClick={() => moveCategory(i, 1)}
+                              disabled={i === categories.length - 1}
+                              className="w-6 h-5 flex items-center justify-center rounded text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/40 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400 transition-colors"
+                              aria-label={`${c.name}を下へ移動`}
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                          </div>
                           <span className="text-xl flex-shrink-0">{c.emoji}</span>
                           <span className="flex-1 min-w-0 text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
                             {c.name}

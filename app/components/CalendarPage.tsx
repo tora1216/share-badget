@@ -339,12 +339,6 @@ export default function CalendarPage() {
     setCategoryId(firstCategoryId(isFixedCost))
   }
 
-  const toggleIsFixedCost = () => {
-    const next = !isFixedCost
-    setIsFixedCost(next)
-    setCategoryId(firstCategoryId(next))
-  }
-
   // グループのFirestoreドキュメントを丸ごと上書き保存する(このアプリは配列全体を1ドキュメントに保存する方式)
   const writeGroupData = (name: string, items: unknown[]) => {
     if (!activeGroupId) return
@@ -1132,26 +1126,10 @@ export default function CalendarPage() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-gray-600 dark:text-gray-300">固定費</label>
-                    <button
-                      type="button"
-                      onClick={toggleIsFixedCost}
-                      className={`relative w-11 h-6 rounded-full transition-colors ${
-                        isFixedCost ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'
-                      }`}
-                      aria-label="固定費トグル"
-                    >
-                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
-                        isFixedCost ? 'translate-x-5' : 'translate-x-0'
-                      }`} />
-                    </button>
-                  </div>
-
                   <div>
                     <label className="text-sm font-medium text-gray-600 dark:text-gray-300 block mb-2">カテゴリ</label>
                 {filteredCategories.length > 0 ? (
-                  <div className="grid grid-cols-4 gap-1.5">
+                  <div className="grid grid-cols-5 gap-1.5">
                     {filteredCategories.map(c => (
                       <button
                         key={c.id}
