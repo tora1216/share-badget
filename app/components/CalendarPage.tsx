@@ -1008,7 +1008,7 @@ export default function CalendarPage() {
           className="fixed inset-0 bg-black/50 flex items-end justify-center z-30"
           onClick={e => { if (e.target === e.currentTarget) setDialogOpen(false) }}
         >
-          <div className="bg-white dark:bg-gray-900 rounded-t-2xl w-full max-w-lg px-6 pt-5 pb-10 shadow-xl">
+          <div className="bg-white dark:bg-gray-900 rounded-t-2xl w-full max-w-lg px-6 pt-5 pb-10 shadow-xl max-h-[85dvh] overflow-y-auto overscroll-contain">
             <div className="w-10 h-1 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-4" />
 
             <div className="flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1 mb-5">
